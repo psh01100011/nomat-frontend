@@ -3,7 +3,8 @@ import { DoorOpen, ImageIcon, MessageSquare, Send, SkipForward, Timer, Trophy, V
 import { CSSProperties, KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Navigate, useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '@/features/auth/auth-context';
-import { addPendingMessage, applyRoomEvent, createInitialGameState } from '@/features/game/game-reducer';
+import type { RoomEventMessage, RoomGameSnapshot } from '@/entities/game';
+import { addPendingMessage, applyRoomEvent, createGameStateFromSnapshot, createInitialGameState } from '@/features/game/game-reducer';
 import { roomEventBuffer } from '@/features/game/room-event-buffer';
 import { createRoomSocket } from '@/features/game/room-socket';
 import { useSoundEffects } from '@/features/game/use-sound-effects';
@@ -51,6 +52,9 @@ export function PlayPage() {
   const lastSkipVoteCountRef = useRef(0);
   const reportedAudioFailureQuestionKeyRef = useRef<string | null>(null);
   const lastChatSentAtRef = useRef(0);
+  const synchronizingRef = useRef(false);
+  const synchronizationVersionRef = useRef(0);
+  const pendingRoomEventsRef = useRef<RoomEventMessage[]>([]);
 
   useEffect(() => {
     if (!roomId) navigate('/rooms', { replace: true });
@@ -105,10 +109,12 @@ export function PlayPage() {
       state: ReturnType<typeof createInitialGameState> | null,
       action:
         | { type: 'reset'; room: NonNullable<typeof roomQuery.data> }
+        | { type: 'snapshot'; room: NonNullable<typeof roomQuery.data>; snapshot: RoomGameSnapshot }
         | { type: 'event'; event: Parameters<typeof applyRoomEvent>[1] }
         | { type: 'pending'; content: string; clientMessageId: string },
     ) => {
       if (action.type === 'reset') return createInitialGameState(action.room);
+      if (action.type === 'snapshot') return createGameStateFromSnapshot(action.room, action.snapshot);
       if (!state) return state;
       if (action.type === 'event') return applyRoomEvent(state, action.event, auth.userId);
       return addPendingMessage(state, action.content, action.clientMessageId, auth.user?.nickname ?? '나', auth.userType);
@@ -124,59 +130,106 @@ export function PlayPage() {
     if (bufferedEvent) dispatchGame({ type: 'event', event: bufferedEvent });
   }, [roomId, roomQuery.data]);
 
+  const handleRoomEvent = useCallback((event: RoomEventMessage) => {
+    if (event.type === 'CHAT_MESSAGE') playChat();
+    if (event.type === 'CORRECT_ANSWER') {
+      correctQuestionKeyRef.current = questionKey(
+        event.questionId ?? currentQuestionRef.current.questionId ?? 0,
+        event.questionNumber ?? currentQuestionRef.current.questionNumber ?? 0,
+      );
+      playCorrect();
+    }
+    if (event.type === 'HINT_REVEALED') playHint();
+    if (event.type === 'SKIP_VOTE_UPDATED' && (event.skipVoteCount ?? 0) > lastSkipVoteCountRef.current) {
+      playSkip();
+      lastSkipVoteCountRef.current = event.skipVoteCount ?? lastSkipVoteCountRef.current;
+    }
+    if (
+      event.type === 'QUESTION_ENDED' &&
+      correctQuestionKeyRef.current !==
+        questionKey(currentQuestionRef.current.questionId ?? 0, currentQuestionRef.current.questionNumber ?? 0)
+    ) {
+      playQuestionEnd();
+    }
+    dispatchGame({ type: 'event', event });
+    if (
+      event.type === 'MEMBER_JOINED' ||
+      event.type === 'MEMBER_LEFT' ||
+      event.type === 'HOST_CHANGED' ||
+      event.type === 'MEMBER_KICKED' ||
+      event.type === 'ROOM_SETTINGS_UPDATED'
+    ) {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.roomDetail(roomId ?? 0) });
+    }
+    if (event.type === 'ROOM_CLOSED' || (event.type === 'MEMBER_KICKED' && event.targetUserId === auth.userId)) {
+      currentRoomStorage.clear();
+      navigate('/rooms', {
+        replace: true,
+        state:
+          event.type === 'MEMBER_KICKED'
+            ? { noticeTitle: '방에서 내보내졌습니다', noticeMessage: '방장이 게임방에서 내보냈습니다.' }
+            : { noticeTitle: '방이 종료되었습니다', noticeMessage: '방이 삭제되었거나 종료되었습니다.' },
+      });
+    }
+  }, [auth.userId, navigate, playChat, playCorrect, playHint, playQuestionEnd, playSkip, queryClient, roomId]);
+
+  const synchronizeGameState = useCallback(async () => {
+    if (!roomId) return;
+    const synchronizationVersion = synchronizationVersionRef.current + 1;
+    synchronizationVersionRef.current = synchronizationVersion;
+    synchronizingRef.current = true;
+    try {
+      const [room, snapshot] = await Promise.all([
+        queryClient.fetchQuery({
+          queryKey: queryKeys.roomDetail(roomId),
+          queryFn: () => roomApi.detail(roomId),
+          retry: 2,
+        }),
+        queryClient.fetchQuery({
+          queryKey: queryKeys.roomGameSnapshot(roomId),
+          queryFn: () => roomApi.gameSnapshot(roomId),
+          retry: 2,
+        }),
+      ]);
+      if (synchronizationVersionRef.current !== synchronizationVersion) return;
+      queryClient.setQueryData(queryKeys.roomDetail(roomId), room);
+      dispatchGame({ type: 'snapshot', room, snapshot });
+      setSkippedQuestionKey(
+        snapshot.currentUserSkipVoted && snapshot.currentQuestion
+          ? questionKey(snapshot.currentQuestion.questionId, snapshot.currentQuestion.questionNumber)
+          : null,
+      );
+    } catch {
+      if (synchronizationVersionRef.current === synchronizationVersion) {
+        setSocketError('게임 상태를 다시 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.');
+      }
+    } finally {
+      if (synchronizationVersionRef.current === synchronizationVersion) {
+        synchronizingRef.current = false;
+        const pendingEvents = pendingRoomEventsRef.current.splice(0);
+        pendingEvents.forEach(handleRoomEvent);
+      }
+    }
+  }, [handleRoomEvent, queryClient, roomId]);
+
   const socket = useMemo(() => {
     if (!roomId) return null;
     return createRoomSocket({
       roomId,
       onEvent: (event) => {
-        if (event.type === 'CHAT_MESSAGE') playChat();
-        if (event.type === 'CORRECT_ANSWER') {
-          correctQuestionKeyRef.current = questionKey(
-            event.questionId ?? currentQuestionRef.current.questionId ?? 0,
-            event.questionNumber ?? currentQuestionRef.current.questionNumber ?? 0,
-          );
-          playCorrect();
+        if (synchronizingRef.current) {
+          pendingRoomEventsRef.current.push(event);
+          return;
         }
-        if (event.type === 'HINT_REVEALED') playHint();
-        if (event.type === 'SKIP_VOTE_UPDATED' && (event.skipVoteCount ?? 0) > lastSkipVoteCountRef.current) {
-          playSkip();
-          lastSkipVoteCountRef.current = event.skipVoteCount ?? lastSkipVoteCountRef.current;
-        }
-        if (
-          event.type === 'QUESTION_ENDED' &&
-          correctQuestionKeyRef.current !==
-            questionKey(currentQuestionRef.current.questionId ?? 0, currentQuestionRef.current.questionNumber ?? 0)
-        ) {
-          playQuestionEnd();
-        }
-        dispatchGame({ type: 'event', event });
-        if (
-          event.type === 'MEMBER_JOINED' ||
-          event.type === 'MEMBER_LEFT' ||
-          event.type === 'HOST_CHANGED' ||
-          event.type === 'MEMBER_KICKED' ||
-          event.type === 'ROOM_SETTINGS_UPDATED'
-        ) {
-          void queryClient.invalidateQueries({ queryKey: queryKeys.roomDetail(roomId) });
-        }
-        if (event.type === 'ROOM_CLOSED' || (event.type === 'MEMBER_KICKED' && event.targetUserId === auth.userId)) {
-          currentRoomStorage.clear();
-          navigate('/rooms', {
-            replace: true,
-            state:
-              event.type === 'MEMBER_KICKED'
-                ? { noticeTitle: '방에서 내보내졌습니다', noticeMessage: '방장이 게임방에서 내보냈습니다.' }
-                : { noticeTitle: '방이 종료되었습니다', noticeMessage: '방이 삭제되었거나 종료되었습니다.' },
-          });
-        }
+        handleRoomEvent(event);
       },
       onError: (message) => setSocketError(socketErrorMessage(message)),
       onReconnect: () => {
         setSocketError('');
-        void queryClient.invalidateQueries({ queryKey: queryKeys.roomDetail(roomId) });
+        void synchronizeGameState();
       },
     });
-  }, [auth.userId, navigate, playChat, playCorrect, playHint, playQuestionEnd, playSkip, queryClient, roomId]);
+  }, [handleRoomEvent, roomId, synchronizeGameState]);
 
   useEffect(() => {
     if (!socket) return undefined;

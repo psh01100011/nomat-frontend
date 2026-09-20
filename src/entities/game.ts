@@ -90,3 +90,50 @@ export type GameState = {
   skipVoteThreshold: number;
   endedReason: string | null;
 };
+
+export type RoomGameSnapshot = {
+  roomId: number;
+  status: 'WAITING' | 'PLAYING' | 'ENDED';
+  currentQuestion: {
+    questionId: number;
+    questionNumber: number;
+    promptText: string | null;
+    mediaUrl: string | null;
+    mediaSourceType: string | null;
+    mediaStartTimeMs: number | null;
+    mediaEndTimeMs: number | null;
+    mediaDurationMs: number | null;
+    startedAt: DateTimeString | null;
+    endsAt: DateTimeString | null;
+    durationSeconds: number | null;
+    answerText: string | null;
+  } | null;
+  hintRevealed: boolean;
+  hintText: string | null;
+  questionEnded: boolean;
+  currentQuestionWinnerUserId: number | null;
+  currentQuestionWinnerAnswer: string | null;
+  skipVoteCount: number;
+  skipVoteThreshold: number;
+  currentUserSkipVoted: boolean;
+  scores: Array<{
+    userId: number;
+    nickname: string;
+    profileImageUrl: string | null;
+    userType: UserType;
+    score: number;
+  }>;
+  questionOutcomes: Array<{
+    questionId: number;
+    questionNumber: number;
+    winnerUserId: number | null;
+    winnerAnswer: string | null;
+    earnedScore: number;
+    answeredMs: number | null;
+    endedReason: string;
+    startedAt: DateTimeString;
+    endedAt: DateTimeString;
+  }>;
+  startedAt: DateTimeString | null;
+  endedAt: DateTimeString | null;
+};

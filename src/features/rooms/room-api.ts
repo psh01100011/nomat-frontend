@@ -6,6 +6,7 @@ import {
   RoomListResponse,
   RoomSettingsUpdateRequest,
 } from '@/entities/room';
+import type { RoomGameSnapshot } from '@/entities/game';
 import { apiRequest, jsonBody } from '@/shared/api/http-client';
 
 export type RoomListParams = {
@@ -47,6 +48,9 @@ export const roomApi = {
   },
   detail(roomId: number) {
     return apiRequest<RoomDetail>(`/api/rooms/${roomId}`, { auth: 'optional' });
+  },
+  gameSnapshot(roomId: number) {
+    return apiRequest<RoomGameSnapshot>(`/api/rooms/${roomId}/game/snapshot`);
   },
   current() {
     return apiRequest<CurrentRoomResponse>('/api/rooms/me/current');

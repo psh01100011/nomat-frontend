@@ -1,5 +1,5 @@
-import { GameState, RoomEventMessage } from '@/entities/game';
-import { RoomDetail } from '@/entities/room';
+import type { GameState, RoomEventMessage, RoomGameSnapshot } from '@/entities/game';
+import type { RoomDetail } from '@/entities/room';
 import { displayNickname, roomJoinMessage } from '@/shared/format/display-labels';
 
 export function createInitialGameState(room: RoomDetail): GameState {
@@ -15,6 +15,58 @@ export function createInitialGameState(room: RoomDetail): GameState {
     currentQuestion: null,
     skipVoteCount: 0,
     skipVoteThreshold: Math.floor(room.memberCount / 2) + 1,
+    endedReason: null,
+  };
+}
+
+export function createGameStateFromSnapshot(room: RoomDetail, snapshot: RoomGameSnapshot): GameState {
+  const currentQuestion = snapshot.currentQuestion;
+  const currentOutcome = currentQuestion
+    ? snapshot.questionOutcomes.find((outcome) => outcome.questionId === currentQuestion.questionId)
+    : null;
+  const winner = snapshot.scores.find((score) => score.userId === snapshot.currentQuestionWinnerUserId);
+
+  return {
+    phase:
+      snapshot.status === 'ENDED'
+        ? 'ended'
+        : snapshot.questionEnded
+          ? 'question-ended'
+          : snapshot.status === 'PLAYING'
+            ? 'playing'
+            : 'waiting',
+    messages: [],
+    scores: Object.fromEntries(
+      snapshot.scores.map((score) => [
+        score.userId,
+        {
+          userId: score.userId,
+          nickname: displayNickname(score.nickname),
+          userType: score.userType,
+          score: score.score,
+        },
+      ]),
+    ),
+    currentQuestion:
+      currentQuestion && currentQuestion.durationSeconds
+        ? {
+            questionId: currentQuestion.questionId,
+            questionNumber: currentQuestion.questionNumber,
+            promptText: currentQuestion.promptText,
+            mediaUrl: currentQuestion.mediaUrl,
+            mediaSourceType: currentQuestion.mediaSourceType,
+            durationSeconds: currentQuestion.durationSeconds,
+            endsAt: currentQuestion.endsAt,
+            questionEndedAt: snapshot.questionEnded ? (currentOutcome?.endedAt ?? currentQuestion.endsAt) : null,
+            initialHintEnabled: room.initialHintEnabled,
+            initialHintTriggerSeconds: room.initialHintTriggerSeconds,
+            hint: snapshot.hintRevealed ? snapshot.hintText : null,
+            revealedAnswer: snapshot.questionEnded ? currentQuestion.answerText : null,
+            correctNickname: winner ? displayNickname(winner.nickname) : null,
+          }
+        : null,
+    skipVoteCount: snapshot.skipVoteCount,
+    skipVoteThreshold: snapshot.skipVoteThreshold,
     endedReason: null,
   };
 }
