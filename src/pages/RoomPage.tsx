@@ -235,6 +235,21 @@ export function RoomPage() {
             },
           ].slice(-80));
         }
+        if (event.type === 'HOST_CHANGED' && event.newHostUserId) {
+          const currentRoom = queryClient.getQueryData<RoomDetail>(queryKeys.roomDetail(roomId));
+          const newHost = currentRoom?.members.find((member) => member.userId === event.newHostUserId);
+          setMessages((current) => [
+            ...current,
+            {
+              id: `host-changed-${event.occurredAt ?? Date.now()}-${event.newHostUserId}`,
+              author: '시스템',
+              content: `${displayNickname(newHost?.nickname ?? '참가자')}님이 새로운 방장이 되었습니다.`,
+              pending: false,
+              mine: false,
+              system: true,
+            },
+          ].slice(-80));
+        }
         if (
           event.type === 'MEMBER_JOINED' ||
           event.type === 'MEMBER_LEFT' ||

@@ -227,6 +227,25 @@ export function applyRoomEvent(state: GameState, event: RoomEventMessage, myUser
         ].slice(-80),
       };
     }
+    case 'HOST_CHANGED': {
+      const nickname = event.newHostUserId
+        ? displayNickname(state.scores[event.newHostUserId]?.nickname ?? '참가자')
+        : '참가자';
+      return {
+        ...state,
+        messages: [
+          ...state.messages,
+          {
+            id: `host-changed-${event.occurredAt ?? Date.now()}-${event.newHostUserId ?? 'unknown'}`,
+            author: '시스템',
+            content: `${nickname}님이 새로운 방장이 되었습니다.`,
+            pending: false,
+            mine: false,
+            system: true,
+          },
+        ].slice(-80),
+      };
+    }
     case 'MEMBER_KICKED': {
       const nickname = event.targetUserId ? displayNickname(state.scores[event.targetUserId]?.nickname) : '참가자';
       const nextScores = { ...state.scores };
