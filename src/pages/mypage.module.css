@@ -1,0 +1,180 @@
+.shell {
+  width: min(100% - 32px, 840px);
+  margin: 0 auto;
+}
+
+.grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.cardPanel,
+.dangerPanel {
+  padding: 1rem;
+}
+
+.guestLabel {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+  color: var(--color-ink-muted);
+  padding: 0.25rem 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.dangerPanel {
+  border-color: color-mix(in srgb, var(--color-danger) 34%, var(--color-line));
+}
+
+.sectionTitle {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.sectionHeading svg {
+  color: var(--color-primary);
+  flex: 0 0 auto;
+}
+
+.sectionTitle h2 {
+  margin: 0;
+  color: var(--color-ink);
+  font-size: 1.12rem;
+}
+
+.sectionTitle p {
+  margin: 0.2rem 0 0;
+  color: var(--color-ink-muted);
+  font-size: 0.9rem;
+}
+
+.profileLayout {
+  display: grid;
+  gap: 1.15rem;
+  justify-items: center;
+}
+
+.profileImageField {
+  width: min(100%, 180px);
+  display: grid;
+  place-items: center;
+}
+
+.circleImagePreview {
+  width: 180px;
+  border-radius: 999px;
+}
+
+.form {
+  width: min(100%, 520px);
+  display: grid;
+  gap: 0.9rem;
+}
+
+.profileImageField > span {
+  width: 180px;
+  height: 180px;
+  box-shadow: var(--shadow-sm);
+}
+
+.profileForm {
+  gap: 1rem;
+}
+
+.readOnlyFields {
+  display: grid;
+  gap: 0.95rem;
+}
+
+.readOnlyItem {
+  display: grid;
+  gap: 0.22rem;
+}
+
+.readOnlyLabel {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.38rem;
+  color: var(--color-ink);
+  font-size: 0.9rem;
+  font-weight: 850;
+}
+
+.readOnlyLabel span {
+  color: var(--color-ink-soft);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.fieldDescription {
+  margin: 0;
+  color: var(--color-ink-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.inlineField {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 0.55rem;
+  align-items: start;
+}
+
+.readOnlyValue {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-ink-muted);
+  font-size: 1.05rem;
+  font-weight: 850;
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emptyValue {
+  color: var(--color-ink-soft);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 760px) {
+  .inlineField {
+    grid-template-columns: 1fr;
+  }
+
+  .sectionTitle {
+    display: grid;
+  }
+
+}
+
+@media (max-width: 560px) {
+  .shell {
+    width: min(100% - 20px, 920px);
+  }
+}

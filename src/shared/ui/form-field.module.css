@@ -1,0 +1,102 @@
+.field {
+  position: relative;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--color-ink);
+  font-size: 0.9rem;
+  font-weight: 750;
+}
+
+.labelMeta {
+  color: var(--color-ink-soft);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.required {
+  color: var(--color-danger);
+}
+
+.counter {
+  flex: 0 0 auto;
+  color: var(--color-ink-soft);
+  font-size: 0.78rem;
+  font-weight: 800;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.field:focus-within .counter {
+  opacity: 1;
+}
+
+.message {
+  min-height: 1.15rem;
+  margin: 0;
+  color: var(--color-ink-muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.error {
+  color: var(--color-danger);
+}
+
+.success {
+  color: var(--color-success);
+}
+
+.emptyMessage {
+  visibility: hidden;
+}
+
+.info {
+  display: inline-grid;
+  place-items: center;
+  color: var(--color-ink-soft);
+  cursor: help;
+}
+
+.info:hover,
+.info:focus-visible {
+  color: var(--color-primary);
+  outline: none;
+}
+
+.info:hover::after,
+.info:focus-visible::after {
+  position: fixed;
+  top: max(72px, 10vh);
+  right: 1rem;
+  z-index: 600;
+  width: min(320px, calc(100vw - 32px));
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  color: var(--color-ink);
+  box-shadow: var(--shadow-md);
+  padding: 0.55rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.45;
+  white-space: normal;
+  content: attr(data-tooltip);
+}
+
+.info:hover::before,
+.info:focus-visible::before {
+  content: none;
+}

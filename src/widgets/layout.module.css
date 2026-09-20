@@ -1,0 +1,288 @@
+.root {
+  min-height: 100vh;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 7%, transparent), transparent 260px),
+    var(--color-bg);
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-line) 82%, transparent);
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.headerInner {
+  width: min(100% - 32px, var(--container));
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 auto;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--color-ink);
+  font-size: 1.15rem;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.brandMark {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.nav a {
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.7rem;
+  color: var(--color-ink-muted);
+  font-size: 0.92rem;
+  font-weight: 750;
+}
+
+.nav a:hover,
+.nav a.active {
+  background: var(--color-surface-muted);
+  color: var(--color-ink);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.authStatusPlaceholder {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: 50%;
+  background: var(--color-surface-muted);
+}
+
+.roomHeaderText {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  gap: 0.1rem;
+  text-align: left;
+}
+
+.roomHeaderText strong,
+.roomHeaderText span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomHeaderText strong {
+  color: var(--color-ink);
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.roomHeaderText span {
+  color: var(--color-ink-muted);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.avatar {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+.profileMenu {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.profileDropdown {
+  position: absolute;
+  top: calc(100% + 0.55rem);
+  right: 0;
+  z-index: 80;
+  min-width: 180px;
+  display: grid;
+  gap: 0.2rem;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+  padding: 0.35rem;
+}
+
+.profileIdentity {
+  min-width: 0;
+  display: grid;
+  gap: 0.16rem;
+  border-bottom: 1px solid var(--color-line);
+  padding: 0.45rem 0.55rem 0.65rem;
+  margin-bottom: 0.1rem;
+}
+
+.profileIdentity span {
+  color: var(--color-ink-soft);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.profileIdentity strong {
+  overflow: hidden;
+  color: var(--color-ink);
+  font-size: 0.9rem;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profileDropdown button {
+  width: 100%;
+  min-height: 38px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  background: transparent;
+  color: var(--color-ink);
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 780;
+}
+
+.profileDropdown button:hover {
+  background: var(--color-surface-muted);
+}
+
+.profileDropdown svg {
+  color: var(--color-ink-muted);
+}
+
+.main {
+  padding: 2rem 0 3rem;
+}
+
+.mainRoom {
+  padding: 1rem 0;
+}
+
+.reconnectBar {
+  width: min(100% - 32px, var(--container));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0 auto;
+  border-top: 1px solid var(--color-line);
+  padding: 0.7rem 0;
+  color: var(--color-ink);
+  font-size: 0.9rem;
+  font-weight: 750;
+}
+
+.reconnectBar > div {
+  display: flex;
+  gap: 0.45rem;
+}
+
+@media (max-width: 860px) {
+  .headerInner {
+    height: auto;
+    min-height: 64px;
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 0.75rem 0;
+  }
+
+  .nav {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .actions {
+    width: 100%;
+    overflow: visible;
+  }
+
+  .profileDropdown {
+    position: fixed;
+    top: 58px;
+    right: 16px;
+  }
+
+  .reconnectBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .reconnectBar > div {
+    width: 100%;
+  }
+
+  .reconnectBar button {
+    flex: 1;
+  }
+}
+
+@media (max-width: 560px) {
+  .headerInner {
+    width: min(100% - 20px, var(--container));
+    min-height: 52px;
+    gap: 0.45rem;
+    padding: 0.45rem 0;
+  }
+
+  .brand {
+    font-size: 1rem;
+  }
+
+  .brandMark {
+    width: 26px;
+    height: 26px;
+  }
+
+  .roomHeaderText span {
+    display: none;
+  }
+
+  .actions {
+    gap: 0.35rem;
+  }
+
+  .actions button {
+    min-height: 34px;
+    padding: 0.4rem 0.55rem;
+    font-size: 0.82rem;
+  }
+}

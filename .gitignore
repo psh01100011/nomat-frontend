@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+
+# Production and package build output
+dist/
+dist-ssr/
+build/
+out/
+
+# Test and coverage output
+coverage/
+playwright-report/
+test-results/
+blob-report/
+.nyc_output/
+
+# Tool caches
+.vite/
+.cache/
+.parcel-cache/
+.turbo/
+.eslintcache
+*.tsbuildinfo
+
+# Local environment variables and secrets
+.env
+.env.*
+!.env.example
+*.local
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# IDE and editor settings
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating system files
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini
+
+# Deployment platform state
+.vercel/
+.netlify/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
