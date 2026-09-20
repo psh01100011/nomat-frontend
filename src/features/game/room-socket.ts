@@ -3,6 +3,8 @@ import { RoomEventMessage } from '@/entities/game';
 import { tokenStorage } from '@/features/auth/token-storage';
 import { refreshAccessToken } from '@/shared/api/http-client';
 
+const ROOM_HEARTBEAT_INTERVAL_MS = 3 * 60 * 1000;
+
 export type RoomSocket = {
   connect: () => void;
   disconnect: () => void;
@@ -23,8 +25,26 @@ export function createRoomSocket({
   onReconnect: () => void;
 }): RoomSocket {
   let disposed = false;
+  let heartbeatIntervalId: number | null = null;
   const emitError = (message: string) => {
     if (!disposed) onError(message);
+  };
+  const stopRoomHeartbeat = () => {
+    if (heartbeatIntervalId === null) return;
+    window.clearInterval(heartbeatIntervalId);
+    heartbeatIntervalId = null;
+  };
+  const sendRoomHeartbeat = () => {
+    if (!client.connected) return;
+    client.publish({
+      destination: `/app/rooms/${roomId}/heartbeat`,
+      headers: authHeaders(),
+    });
+  };
+  const startRoomHeartbeat = () => {
+    stopRoomHeartbeat();
+    sendRoomHeartbeat();
+    heartbeatIntervalId = window.setInterval(sendRoomHeartbeat, ROOM_HEARTBEAT_INTERVAL_MS);
   };
 
   const client = new Client({
@@ -37,10 +57,12 @@ export function createRoomSocket({
       client.subscribe(`/topic/rooms/${roomId}`, (message) => {
         if (!disposed) onEvent(JSON.parse(message.body) as RoomEventMessage);
       });
+      startRoomHeartbeat();
       if (!disposed) onReconnect();
     },
     onStompError: (frame) => emitError(parseMessageBody(frame.body)),
     onWebSocketError: () => undefined,
+    onWebSocketClose: stopRoomHeartbeat,
   });
 
   return {
@@ -57,6 +79,7 @@ export function createRoomSocket({
     },
     disconnect: () => {
       disposed = true;
+      stopRoomHeartbeat();
       void client.deactivate();
     },
     sendMessage: (content, clientMessageId) =>
