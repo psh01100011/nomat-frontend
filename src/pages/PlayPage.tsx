@@ -242,6 +242,44 @@ export function PlayPage() {
   const currentQuestion = gameState?.currentQuestion ?? null;
   const phase = gameState?.phase ?? 'waiting';
   const isImageQuestion = currentQuestion?.mediaSourceType === 'UPLOAD';
+  const audioRepeatEnabled = roomQuery.data?.audioRepeatEnabled ?? true;
+  const synchronizeQuestionAudio = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio || !currentQuestion || phase !== 'playing') {
+      audio?.pause();
+      return;
+    }
+
+    if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+
+    const remainingSeconds = getRemainingMs(
+      currentQuestion.endsAt,
+      currentQuestion.durationSeconds,
+      Date.now(),
+    ) / 1000;
+    const elapsedSeconds = Math.max(0, currentQuestion.durationSeconds - remainingSeconds);
+
+    if (audioRepeatEnabled) {
+      audio.currentTime = elapsedSeconds % audio.duration;
+    } else if (elapsedSeconds >= audio.duration) {
+      audio.currentTime = audio.duration;
+      audio.pause();
+      return;
+    } else {
+      audio.currentTime = elapsedSeconds;
+    }
+
+    void audio.play().catch(() => {
+      // Browser autoplay policy may require a user interaction before playback.
+    });
+  }, [
+    currentQuestion?.durationSeconds,
+    currentQuestion?.endsAt,
+    currentQuestion?.questionId,
+    currentQuestion?.questionNumber,
+    phase,
+    audioRepeatEnabled,
+  ]);
   const keepChatFocus = useCallback(() => {
     window.requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
@@ -281,6 +319,16 @@ export function PlayPage() {
     localStorage.setItem(AUDIO_VOLUME_KEY, String(audioVolume));
     if (audioRef.current) audioRef.current.volume = audioVolume;
   }, [audioVolume, currentQuestion?.mediaUrl]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (phase !== 'playing') {
+      audio.pause();
+      return;
+    }
+    if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) synchronizeQuestionAudio();
+  }, [currentQuestion?.mediaUrl, phase, synchronizeQuestionAudio]);
 
   useEffect(() => {
     if (!currentQuestion?.endsAt || phase === 'ended') return;
@@ -457,7 +505,13 @@ export function PlayPage() {
                 )}
                 {currentQuestion.mediaUrl && !isImageQuestion && (
                   <div className={styles.mediaPanel}>
-                    <audio ref={audioRef} autoPlay loop src={currentQuestion.mediaUrl} onError={reportAudioLoadFailure} />
+                    <audio
+                      ref={audioRef}
+                      loop={audioRepeatEnabled}
+                      src={currentQuestion.mediaUrl}
+                      onError={reportAudioLoadFailure}
+                      onLoadedMetadata={synchronizeQuestionAudio}
+                    />
                     <div className={styles.audioControl}>
                       <Volume2 size={18} />
                       <span>음량</span>
