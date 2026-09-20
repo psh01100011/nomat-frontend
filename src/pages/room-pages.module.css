@@ -773,8 +773,30 @@
 }
 
 .score .memberInfo {
-  width: 100%;
+  min-width: 0;
   flex: 1 1 auto;
+}
+
+.scoreKickButton {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-danger);
+  cursor: pointer;
+}
+
+.scoreKickButton:hover {
+  background: var(--color-danger-soft);
+}
+
+.scoreKickButton:focus-visible {
+  outline: 2px solid var(--color-danger);
+  outline-offset: 2px;
 }
 
 .score strong {

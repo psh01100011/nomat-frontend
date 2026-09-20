@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { DoorOpen, ImageIcon, MessageSquare, Send, SkipForward, Timer, Trophy, Volume2 } from 'lucide-react';
+import { DoorOpen, ImageIcon, MessageSquare, Send, SkipForward, Timer, Trophy, UserMinus, Volume2 } from 'lucide-react';
 import { CSSProperties, KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Navigate, useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '@/features/auth/auth-context';
@@ -33,6 +33,7 @@ export function PlayPage() {
   const [now, setNow] = useState(() => Date.now());
   const [exitOpen, setExitOpen] = useState(false);
   const [resultOpen, setResultOpen] = useState(false);
+  const [kickTarget, setKickTarget] = useState<{ userId: number; nickname: string } | null>(null);
   const [skippedQuestionKey, setSkippedQuestionKey] = useState<string | null>(null);
   const [audioVolume, setAudioVolume] = useState(() => readAudioVolume());
   const initializedRoomId = useRef<number | null>(null);
@@ -102,6 +103,11 @@ export function PlayPage() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.currentRoom });
       navigate('/rooms', { replace: true });
     },
+  });
+
+  const kickMutation = useMutation({
+    mutationFn: (targetUserId: number) => roomApi.kick(roomId ?? 0, targetUserId),
+    onSuccess: () => setKickTarget(null),
   });
 
   const [gameState, dispatchGame] = useReducer(
@@ -378,7 +384,7 @@ export function PlayPage() {
   }, [roomQuery.data, setRoomHeader]);
 
   useEffect(() => {
-    if (exitOpen || resultOpen) return;
+    if (exitOpen || resultOpen || kickTarget) return;
     const handleEnterFocus = (event: globalThis.KeyboardEvent) => {
       if (event.key !== 'Enter' || event.isComposing) return;
       if (isEditableTarget(event.target)) return;
@@ -387,7 +393,7 @@ export function PlayPage() {
     };
     window.addEventListener('keydown', handleEnterFocus);
     return () => window.removeEventListener('keydown', handleEnterFocus);
-  }, [exitOpen, resultOpen]);
+  }, [exitOpen, kickTarget, resultOpen]);
 
   const remainingMs = currentQuestion ? getRemainingMs(currentQuestion.endsAt, currentQuestion.durationSeconds, now) : 0;
   const nextQuestionMs =
@@ -420,6 +426,7 @@ export function PlayPage() {
   const room = roomQuery.data;
   const scores = Object.values(gameState.scores).sort((a, b) => b.score - a.score);
   const membersById = new Map(room.members.map((member) => [member.userId, member]));
+  const isHost = room.hostUserId === auth.userId;
   const compactScores = scores.length > 12;
   const chatAuthorColors = buildAuthorColorMap(gameState.messages);
 
@@ -449,6 +456,7 @@ export function PlayPage() {
   return (
     <section className={styles.shell}>
       {socketError && <Alert tone="danger">실시간 연결 오류: {socketError}</Alert>}
+      {kickMutation.isError && <Alert tone="danger">참가자를 내보내지 못했습니다.</Alert>}
       <div className={`${styles.roomLayout} ${questionLayoutClass(currentQuestion?.mediaSourceType)}`}>
         <aside className={styles.side}>
           <div className={styles.sideBody}>
@@ -470,6 +478,17 @@ export function PlayPage() {
                       <span>{score.score}점</span>
                     </span>
                   </span>
+                  {isHost && gameState.phase !== 'ended' && score.userId !== auth.userId && (
+                    <button
+                      className={styles.scoreKickButton}
+                      type="button"
+                      aria-label={`${displayNickname(score.nickname)} 내보내기`}
+                      title="참가자 내보내기"
+                      onClick={() => setKickTarget({ userId: score.userId, nickname: score.nickname })}
+                    >
+                      <UserMinus size={15} />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -624,6 +643,30 @@ export function PlayPage() {
         }
       >
         <p className="muted">현재 게임방에서 나가고 방 목록으로 이동합니다.</p>
+      </Modal>
+      <Modal
+        open={Boolean(kickTarget)}
+        title="참가자 내보내기"
+        onClose={() => setKickTarget(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setKickTarget(null)}>
+              취소
+            </Button>
+            <Button
+              variant="danger"
+              icon={<UserMinus size={17} />}
+              disabled={kickMutation.isPending}
+              onClick={() => kickTarget && runOnce('game-kick', () => kickMutation.mutateAsync(kickTarget.userId))}
+            >
+              내보내기
+            </Button>
+          </>
+        }
+      >
+        <p className="muted">
+          {displayNickname(kickTarget?.nickname)}님을 게임방에서 내보냅니다. 해당 사용자의 점수는 게임 결과에서 제외됩니다.
+        </p>
       </Modal>
       <Modal
         open={gameState.phase === 'ended' && resultOpen}
