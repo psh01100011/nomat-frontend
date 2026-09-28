@@ -20,7 +20,6 @@ export type GuestLoginResponse = {
   userType: UserType;
   nickname: string;
   accessToken: string;
-  refreshToken: string;
 };
 
 export type SignupRequest = {
