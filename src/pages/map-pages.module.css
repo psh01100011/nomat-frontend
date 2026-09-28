@@ -9,6 +9,27 @@
   margin-bottom: 1rem;
 }
 
+.adShell {
+  position: relative;
+}
+
+.footerAd {
+  margin-top: 1rem;
+}
+
+.sideAd {
+  position: absolute;
+  top: 0;
+}
+
+.sideAdLeft {
+  right: calc(100% + 16px);
+}
+
+.sideAdRight {
+  left: calc(100% + 16px);
+}
+
 .searchRow {
   display: grid;
   grid-template-columns: minmax(240px, 1fr) auto;

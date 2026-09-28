@@ -10,6 +10,7 @@ import { roomApi } from '@/features/rooms/room-api';
 import { currentRoomStorage } from '@/features/rooms/current-room-storage';
 import { type ChatMessage } from '@/entities/game';
 import { RoomDetail, RoomMember } from '@/entities/room';
+import { AdSlot } from '@/shared/ads/AdSlot';
 import { toApiErrorMessage } from '@/shared/api/http-client';
 import { queryKeys } from '@/shared/api/query-keys';
 import { useSingleFlight } from '@/shared/hooks/use-single-flight';
@@ -473,7 +474,7 @@ export function RoomPage() {
   };
 
   return (
-    <section className={styles.shell}>
+    <section className={`${styles.shell} ${styles.lobbyAdShell}`}>
       {startMutation.isError && <Alert tone="danger">게임을 시작하지 못했습니다.</Alert>}
       {deleteMutation.isError && <Alert tone="danger">방을 삭제하지 못했습니다.</Alert>}
       {kickMutation.isError && <Alert tone="danger">참가자를 내보내지 못했습니다.</Alert>}
@@ -483,8 +484,9 @@ export function RoomPage() {
       {socketError && <Alert tone="danger">실시간 연결 오류: {socketError}</Alert>}
       {inviteFeedback === 'failed' && <Alert tone="danger">초대 링크를 복사하지 못했습니다. 잠시 후 다시 시도해주세요.</Alert>}
       {isStarting && <Alert>게임을 준비하고 있습니다. 첫 문제가 시작되면 자동으로 이동합니다.</Alert>}
-      <div className={styles.roomLayout}>
-        <aside className={`${styles.side} ${styles.lobbySide} ${compactMembers ? styles.compactMembers : ''}`}>
+      <div className={styles.roomExperience}>
+        <div className={styles.roomLayout}>
+          <aside className={`${styles.side} ${styles.lobbySide} ${compactMembers ? styles.compactMembers : ''}`}>
           <div className={styles.mapThumb}>
             <MapArtwork title={room.map.title} imageUrl={room.map.thumbnailUrl} />
           </div>
@@ -546,8 +548,8 @@ export function RoomPage() {
               })}
             </ul>
           </div>
-        </aside>
-        <main className={`${styles.mainPanel} ${styles.lobbyPanel}`}>
+          </aside>
+          <main className={`${styles.mainPanel} ${styles.lobbyPanel}`}>
           <div className={`${styles.section} ${styles.lobbyHero}`}>
             <div className={styles.lobbyStats}>
               <div>
@@ -602,7 +604,20 @@ export function RoomPage() {
               전송
             </Button>
           </div>
-        </main>
+          </main>
+        </div>
+        <AdSlot
+          className={`${styles.roomAdRail} ${styles.contentAdRailLeft}`}
+          minViewportWidth={1480}
+          placement="roomLobbyLeft"
+          variant="vertical"
+        />
+        <AdSlot
+          className={`${styles.roomAdRail} ${styles.contentAdRailRight}`}
+          minViewportWidth={1480}
+          placement="roomLobbyRight"
+          variant="vertical"
+        />
       </div>
       <Modal
         open={settingsOpen}

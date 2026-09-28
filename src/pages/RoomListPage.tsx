@@ -8,6 +8,7 @@ import { AlreadyJoinedRoomModal } from '@/features/rooms/AlreadyJoinedRoomModal'
 import { roomApi } from '@/features/rooms/room-api';
 import { currentRoomStorage } from '@/features/rooms/current-room-storage';
 import { getAlreadyJoinedRoomId, getAlreadyJoinedRoomStatus } from '@/features/rooms/room-error';
+import { AdSlot } from '@/shared/ads/AdSlot';
 import { toApiErrorMessage } from '@/shared/api/http-client';
 import { queryKeys } from '@/shared/api/query-keys';
 import { useSingleFlight } from '@/shared/hooks/use-single-flight';
@@ -118,7 +119,7 @@ export function RoomListPage() {
   };
 
   return (
-    <section className={styles.shell}>
+    <section className={`${styles.shell} ${styles.listAdShell}`}>
       <div className={styles.browseToolbar}>
         <div className={styles.browseTabs}>
           <button type="button" onClick={() => navigate('/maps', { replace: true })}>
@@ -175,6 +176,8 @@ export function RoomListPage() {
           </label>
         </div>
       </div>
+      <AdSlot className={`${styles.roomAdRail} ${styles.contentAdRailLeft}`} minViewportWidth={1480} placement="roomListLeft" variant="vertical" />
+      <AdSlot className={`${styles.roomAdRail} ${styles.contentAdRailRight}`} minViewportWidth={1480} placement="roomListRight" variant="vertical" />
       {roomsQuery.isError && <Alert tone="danger">방 목록을 불러오지 못했습니다.</Alert>}
       {roomsQuery.isLoading ? (
         <EmptyState title="방 목록을 불러오는 중입니다." />
@@ -231,8 +234,23 @@ export function RoomListPage() {
           </div>
         </>
       ) : (
-        <EmptyState title="표시할 방이 없습니다." />
+        <EmptyState
+          title="아직 열린 게임방이 없습니다."
+          description="플레이할 맵을 골라 새로운 게임방을 만들어보세요."
+          action={
+            <Button icon={<MapIcon size={17} />} onClick={() => navigate('/maps')}>
+              맵에서 방 만들기
+            </Button>
+          }
+        />
       )}
+      <AdSlot
+        className={styles.footerAd}
+        maxViewportWidth={1479}
+        minViewportWidth={861}
+        placement="roomListInline"
+        variant="horizontal"
+      />
       <Modal
         open={loginPromptOpen}
         title="로그인이 필요합니다"

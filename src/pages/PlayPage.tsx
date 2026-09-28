@@ -10,6 +10,7 @@ import { createRoomSocket } from '@/features/game/room-socket';
 import { useSoundEffects } from '@/features/game/use-sound-effects';
 import { currentRoomStorage } from '@/features/rooms/current-room-storage';
 import { roomApi } from '@/features/rooms/room-api';
+import { AdSlot } from '@/shared/ads/AdSlot';
 import { queryKeys } from '@/shared/api/query-keys';
 import { useSingleFlight } from '@/shared/hooks/use-single-flight';
 import { displayNickname } from '@/shared/format/display-labels';
@@ -454,11 +455,12 @@ export function PlayPage() {
   };
 
   return (
-    <section className={styles.shell}>
+    <section className={`${styles.shell} ${styles.lobbyAdShell}`}>
       {socketError && <Alert tone="danger">실시간 연결 오류: {socketError}</Alert>}
       {kickMutation.isError && <Alert tone="danger">참가자를 내보내지 못했습니다.</Alert>}
-      <div className={`${styles.roomLayout} ${questionLayoutClass(currentQuestion?.mediaSourceType)}`}>
-        <aside className={styles.side}>
+      <div className={styles.roomExperience}>
+        <div className={`${styles.roomLayout} ${questionLayoutClass(currentQuestion?.mediaSourceType)}`}>
+          <aside className={styles.side}>
           <div className={styles.sideBody}>
             <SoundControl volume={soundVolume} onChange={setSoundVolume} />
             <h2>점수</h2>
@@ -493,8 +495,8 @@ export function PlayPage() {
               ))}
             </div>
           </div>
-        </aside>
-        <main className={styles.mainPanel}>
+          </aside>
+          <main className={styles.mainPanel}>
           <section className={styles.section}>
             {gameState.phase === 'ended' ? (
               <EmptyState title="게임 종료" description={gameState.endedReason ?? '모든 문제가 종료되었습니다.'} />
@@ -625,7 +627,20 @@ export function PlayPage() {
               전송
             </Button>
           </div>
-        </main>
+          </main>
+        </div>
+        <AdSlot
+          className={`${styles.roomAdRail} ${styles.contentAdRailLeft}`}
+          minViewportWidth={1480}
+          placement="gameRoomLeft"
+          variant="vertical"
+        />
+        <AdSlot
+          className={`${styles.roomAdRail} ${styles.contentAdRailRight}`}
+          minViewportWidth={1480}
+          placement="gameRoomRight"
+          variant="vertical"
+        />
       </div>
       <Modal
         open={exitOpen}

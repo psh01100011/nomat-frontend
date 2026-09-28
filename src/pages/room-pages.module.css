@@ -40,6 +40,14 @@
   align-items: center;
 }
 
+.listAdShell {
+  position: relative;
+}
+
+.footerAd {
+  margin-top: 1rem;
+}
+
 .inputWithCounter {
   position: relative;
   min-width: 0;
@@ -347,6 +355,23 @@
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
   gap: 1rem;
+}
+
+.roomExperience {
+  position: relative;
+}
+
+.roomAdRail {
+  position: absolute;
+  top: 0;
+}
+
+.contentAdRailLeft {
+  right: calc(100% + 16px);
+}
+
+.contentAdRailRight {
+  left: calc(100% + 16px);
 }
 
 .side,
