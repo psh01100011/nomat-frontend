@@ -411,38 +411,6 @@
   padding: 1rem;
 }
 
-.soundControl,
-.audioControl {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  align-items: center;
-  gap: 0.5rem;
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-subtle);
-  color: var(--color-ink-muted);
-  padding: 0.52rem 0.62rem;
-  font-size: 0.82rem;
-  font-weight: 850;
-}
-
-.soundControl {
-  margin-top: 0.7rem;
-}
-
-.soundControl svg,
-.audioControl svg {
-  color: var(--color-primary);
-}
-
-.soundControl input,
-.audioControl input {
-  min-height: 20px;
-  padding: 0;
-  accent-color: var(--color-primary);
-}
-
 .settingsForm {
   display: grid;
   gap: 0.9rem;
@@ -457,7 +425,8 @@
 .memberPanel {
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 0.45rem;
   padding: 0 0.75rem 0.75rem;
 }
 
@@ -501,6 +470,19 @@
   gap: 0.55rem;
 }
 
+.lobbySettingsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
+.lobbySettingsHeader > strong {
+  color: var(--color-ink);
+  font-size: 0.92rem;
+}
+
 .lobbyStats div {
   min-width: 0;
   display: grid;
@@ -539,6 +521,10 @@
   color: var(--color-ink-muted);
   font-size: 0.82rem;
   font-weight: 900;
+}
+
+.inviteButton {
+  width: 100%;
 }
 
 .memberList {

@@ -14,8 +14,6 @@ import { useSingleFlight } from '@/shared/hooks/use-single-flight';
 import styles from './layout.module.css';
 
 export type RoomHeaderState = {
-  title: string;
-  description?: string;
   actions?: ReactNode;
 };
 
@@ -114,10 +112,6 @@ export function AppLayout() {
                 <span className={styles.brandMark}>N</span>
                 NOMAT
               </span>
-              <div className={styles.roomHeaderText}>
-                <strong>{roomHeader?.title ?? '게임방'}</strong>
-                {roomHeader?.description && <span>{roomHeader.description}</span>}
-              </div>
               <div className={styles.actions}>
                 <Button
                   icon={theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}

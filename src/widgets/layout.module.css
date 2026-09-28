@@ -79,34 +79,6 @@
   background: var(--color-surface-muted);
 }
 
-.roomHeaderText {
-  min-width: 0;
-  flex: 1 1 auto;
-  display: grid;
-  gap: 0.1rem;
-  text-align: left;
-}
-
-.roomHeaderText strong,
-.roomHeaderText span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.roomHeaderText strong {
-  color: var(--color-ink);
-  font-size: 1rem;
-  font-weight: 900;
-}
-
-.roomHeaderText span {
-  color: var(--color-ink-muted);
-  font-size: 0.82rem;
-  font-weight: 750;
-}
-
 .avatar {
   width: 38px;
   height: 38px;
@@ -270,10 +242,6 @@
   .brandMark {
     width: 26px;
     height: 26px;
-  }
-
-  .roomHeaderText span {
-    display: none;
   }
 
   .actions {

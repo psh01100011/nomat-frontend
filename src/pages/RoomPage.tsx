@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Clock3, DoorOpen, Link2, Play, Send, Settings, Trash2, UserMinus, UsersRound, Volume2 } from 'lucide-react';
+import { Check, Clock3, DoorOpen, Link2, Play, Send, Settings, Trash2, UserMinus, UsersRound } from 'lucide-react';
 import { type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '@/features/auth/auth-context';
 import { roomEventBuffer } from '@/features/game/room-event-buffer';
 import { createRoomSocket } from '@/features/game/room-socket';
+import { useAudioVolume } from '@/features/game/use-audio-volume';
 import { useSoundEffects } from '@/features/game/use-sound-effects';
 import { roomApi } from '@/features/rooms/room-api';
 import { currentRoomStorage } from '@/features/rooms/current-room-storage';
@@ -23,6 +24,7 @@ import { MapArtwork, UserAvatar } from '@/shared/ui/FallbackMedia';
 import { Modal } from '@/shared/ui/Modal';
 import { NumericTextInput } from '@/shared/ui/NumericTextInput';
 import { StatusBadge } from '@/shared/ui/StatusBadge';
+import { SoundSettingsButton } from '@/shared/ui/SoundSettingsButton';
 import { RoomHeaderOutletContext } from '@/widgets/AppLayout';
 import styles from './room-pages.module.css';
 
@@ -53,6 +55,7 @@ export function RoomPage() {
   const lastChatSentAtRef = useRef(0);
   const previousMembersRef = useRef<Map<number, Pick<RoomMember, 'nickname' | 'userType'>> | null>(null);
   const { volume: soundVolume, setVolume: setSoundVolume, playChat } = useSoundEffects();
+  const { volume: audioVolume, setVolume: setAudioVolume } = useAudioVolume();
 
   useEffect(() => {
     if (!roomId) navigate('/rooms', { replace: true });
@@ -384,29 +387,21 @@ export function RoomPage() {
     }
     const isHost = room.hostUserId === auth.userId;
     setRoomHeader({
-      title: room.title,
-      description: room.map.title,
       actions: (
         <>
+          <SoundSettingsButton
+            audioVolume={audioVolume}
+            onAudioVolumeChange={setAudioVolume}
+            onSoundVolumeChange={setSoundVolume}
+            showAudioVolume={room.map.questionType === 'AUDIO'}
+            soundVolume={soundVolume}
+          />
           <Button
-            variant="secondary"
-            icon={inviteFeedback === 'copied' ? <Check size={17} /> : <Link2 size={17} />}
-            disabled={inviteMutation.isPending}
-            onClick={() => void copyInviteLink()}
+            icon={<DoorOpen size={17} />}
+            title="대기방 나가기"
+            variant="danger"
+            onClick={() => setExitOpen(true)}
           >
-            초대 링크 복사
-          </Button>
-          {isHost && (
-            <Button
-              variant="secondary"
-              icon={<Settings size={17} />}
-              disabled={settingsMutation.isPending}
-              onClick={() => setSettingsOpen(true)}
-            >
-              설정
-            </Button>
-          )}
-          <Button variant="danger" icon={<DoorOpen size={17} />} onClick={() => setExitOpen(true)}>
             나가기
           </Button>
           {isHost && (
@@ -500,13 +495,22 @@ export function RoomPage() {
               )}
               <span className={styles.roomCategoryText}>{room.map.categoryName}</span>
             </div>
-            <SoundControl volume={soundVolume} onChange={setSoundVolume} />
           </div>
           <div className={styles.memberPanel}>
             <div className={styles.memberHeader}>
               <h2>참가자</h2>
               <span>{room.memberCount}/{room.maxPlayers}</span>
             </div>
+            <Button
+              className={styles.inviteButton}
+              disabled={inviteMutation.isPending}
+              icon={inviteFeedback === 'copied' ? <Check size={16} /> : <Link2 size={16} />}
+              size="sm"
+              variant="secondary"
+              onClick={() => void copyInviteLink()}
+            >
+              {inviteFeedback === 'copied' ? '초대 링크 복사됨' : '초대 링크 복사'}
+            </Button>
             <ul
               className={styles.memberList}
               style={{ '--member-slot-count': room.maxPlayers } as CSSProperties}
@@ -551,6 +555,21 @@ export function RoomPage() {
           </aside>
           <main className={`${styles.mainPanel} ${styles.lobbyPanel}`}>
           <div className={`${styles.section} ${styles.lobbyHero}`}>
+            <div className={styles.lobbySettingsHeader}>
+              <strong>게임 설정</strong>
+              {isHost && (
+                <Button
+                  disabled={settingsMutation.isPending}
+                  icon={<Settings size={16} />}
+                  size="sm"
+                  title="방 설정"
+                  variant="secondary"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  방 설정
+                </Button>
+              )}
+            </div>
             <div className={styles.lobbyStats}>
               <div>
                 <UsersRound size={18} />
@@ -793,23 +812,6 @@ function validateRoomSettings(
     return { field: 'answerTimeLimitSeconds' as const, message: `${roomTimeLimitLabel(questionType)}은 5-300초로 설정해주세요.` };
   }
   return null;
-}
-
-function SoundControl({ volume, onChange }: { volume: number; onChange: (volume: number) => void }) {
-  return (
-    <div className={styles.soundControl}>
-      <Volume2 size={16} />
-      <span>효과음</span>
-      <input
-        aria-label="효과음 음량"
-        max={100}
-        min={0}
-        type="range"
-        value={Math.round(volume * 100)}
-        onChange={(event) => onChange(Number(event.target.value) / 100)}
-      />
-    </div>
-  );
 }
 
 function boundedNumber(value: string, min: number, max: number) {

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { DoorOpen, ImageIcon, MessageSquare, Send, SkipForward, Timer, Trophy, UserMinus, Volume2 } from 'lucide-react';
+import { DoorOpen, ImageIcon, MessageSquare, Send, SkipForward, Timer, Trophy, UserMinus } from 'lucide-react';
 import { CSSProperties, KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Navigate, useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '@/features/auth/auth-context';
@@ -7,6 +7,7 @@ import type { RoomEventMessage, RoomGameSnapshot } from '@/entities/game';
 import { addPendingMessage, applyRoomEvent, createGameStateFromSnapshot, createInitialGameState } from '@/features/game/game-reducer';
 import { roomEventBuffer } from '@/features/game/room-event-buffer';
 import { createRoomSocket } from '@/features/game/room-socket';
+import { useAudioVolume } from '@/features/game/use-audio-volume';
 import { useSoundEffects } from '@/features/game/use-sound-effects';
 import { currentRoomStorage } from '@/features/rooms/current-room-storage';
 import { roomApi } from '@/features/rooms/room-api';
@@ -19,6 +20,7 @@ import { Button } from '@/shared/ui/Button';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { UserAvatar } from '@/shared/ui/FallbackMedia';
 import { Modal } from '@/shared/ui/Modal';
+import { SoundSettingsButton } from '@/shared/ui/SoundSettingsButton';
 import { RoomHeaderOutletContext } from '@/widgets/AppLayout';
 import styles from './room-pages.module.css';
 
@@ -36,7 +38,7 @@ export function PlayPage() {
   const [resultOpen, setResultOpen] = useState(false);
   const [kickTarget, setKickTarget] = useState<{ userId: number; nickname: string } | null>(null);
   const [skippedQuestionKey, setSkippedQuestionKey] = useState<string | null>(null);
-  const [audioVolume, setAudioVolume] = useState(() => readAudioVolume());
+  const { volume: audioVolume, setVolume: setAudioVolume } = useAudioVolume();
   const initializedRoomId = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -323,7 +325,6 @@ export function PlayPage() {
   }, [currentQuestion, gameState?.skipVoteCount]);
 
   useEffect(() => {
-    localStorage.setItem(AUDIO_VOLUME_KEY, String(audioVolume));
     if (audioRef.current) audioRef.current.volume = audioVolume;
   }, [audioVolume, currentQuestion?.mediaUrl]);
 
@@ -350,6 +351,7 @@ export function PlayPage() {
     const handleShortcut = (event: globalThis.KeyboardEvent) => {
       if (event.isComposing) return;
       if (event.key !== 'Escape') return;
+      if (document.querySelector('[data-sound-settings-open="true"]')) return;
       event.preventDefault();
       sendSkip();
     };
@@ -373,12 +375,24 @@ export function PlayPage() {
       return;
     }
     setRoomHeader({
-      title: room.title,
-      description: room.map.title,
       actions: (
-        <Button variant="danger" icon={<DoorOpen size={17} />} onClick={() => setExitOpen(true)}>
-          나가기
-        </Button>
+        <>
+          <SoundSettingsButton
+            audioVolume={audioVolume}
+            onAudioVolumeChange={setAudioVolume}
+            onSoundVolumeChange={setSoundVolume}
+            showAudioVolume={room.map.questionType === 'AUDIO'}
+            soundVolume={soundVolume}
+          />
+          <Button
+            icon={<DoorOpen size={17} />}
+            title="게임방 나가기"
+            variant="danger"
+            onClick={() => setExitOpen(true)}
+          >
+            나가기
+          </Button>
+        </>
       ),
     });
     return () => setRoomHeader(null);
@@ -462,7 +476,6 @@ export function PlayPage() {
         <div className={`${styles.roomLayout} ${questionLayoutClass(currentQuestion?.mediaSourceType)}`}>
           <aside className={styles.side}>
           <div className={styles.sideBody}>
-            <SoundControl volume={soundVolume} onChange={setSoundVolume} />
             <h2>점수</h2>
             <div className={`${styles.scoreGrid} ${compactScores ? styles.scoreGridCompact : ''}`}>
               {scores.map((score, index) => (
@@ -525,27 +538,13 @@ export function PlayPage() {
                   </div>
                 )}
                 {currentQuestion.mediaUrl && !isImageQuestion && (
-                  <div className={styles.mediaPanel}>
-                    <audio
-                      ref={audioRef}
-                      loop={audioRepeatEnabled}
-                      src={currentQuestion.mediaUrl}
-                      onError={reportAudioLoadFailure}
-                      onLoadedMetadata={synchronizeQuestionAudio}
-                    />
-                    <div className={styles.audioControl}>
-                      <Volume2 size={18} />
-                      <span>음량</span>
-                      <input
-                        aria-label="문제 음량"
-                        max={100}
-                        min={0}
-                        type="range"
-                        value={Math.round(audioVolume * 100)}
-                        onChange={(event) => setAudioVolume(Number(event.target.value) / 100)}
-                      />
-                    </div>
-                  </div>
+                  <audio
+                    ref={audioRef}
+                    loop={audioRepeatEnabled}
+                    src={currentQuestion.mediaUrl}
+                    onError={reportAudioLoadFailure}
+                    onLoadedMetadata={synchronizeQuestionAudio}
+                  />
                 )}
                 {!currentQuestion.mediaUrl && isImageQuestion && (
                   <div className={styles.mediaPanel}>
@@ -751,7 +750,6 @@ function formatSeconds(totalSeconds: number) {
 
 const NEXT_QUESTION_DELAY_MS = 3000;
 const DEFAULT_HINT_TRIGGER_SECONDS = 10;
-const AUDIO_VOLUME_KEY = 'nomat.audioVolume';
 const CHAT_AUTHOR_COLORS = ['#15803d', '#b45309', '#7c3aed', '#0f766e', '#be123c', '#c2410c', '#a16207', '#64748b'];
 
 function socketErrorMessage(messageCode: string) {
@@ -786,28 +784,6 @@ function questionLayoutClass(mediaSourceType: string | null | undefined) {
   if (mediaSourceType === 'UPLOAD') return styles.imageQuestionLayout;
   if (mediaSourceType) return styles.audioQuestionLayout;
   return styles.textQuestionLayout;
-}
-
-function readAudioVolume() {
-  const stored = Number(localStorage.getItem(AUDIO_VOLUME_KEY));
-  return Number.isFinite(stored) ? Math.max(0, Math.min(1, stored)) : 0.8;
-}
-
-function SoundControl({ volume, onChange }: { volume: number; onChange: (volume: number) => void }) {
-  return (
-    <div className={styles.soundControl}>
-      <Volume2 size={16} />
-      <span>효과음</span>
-      <input
-        aria-label="효과음 음량"
-        max={100}
-        min={0}
-        type="range"
-        value={Math.round(volume * 100)}
-        onChange={(event) => onChange(Number(event.target.value) / 100)}
-      />
-    </div>
-  );
 }
 
 function isEditableTarget(target: EventTarget | null) {
