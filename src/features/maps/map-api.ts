@@ -7,6 +7,7 @@ import {
   MapDraftResponse,
   MapEditorDetail,
   MapListResponse,
+  MapModifyResponse,
   MapReactionResponse,
 } from '@/entities/map';
 import { apiRequest, jsonBody } from '@/shared/api/http-client';
@@ -56,7 +57,13 @@ export const mapApi = {
     });
   },
   update(mapId: number, body: unknown) {
-    return apiRequest<{ mapId: number; version: number; updatedAt: string }>(`/api/maps/${mapId}`, {
+    return apiRequest<MapModifyResponse>(`/api/maps/${mapId}`, {
+      method: 'PATCH',
+      body: jsonBody(body),
+    });
+  },
+  updateDraft(mapId: number, body: unknown) {
+    return apiRequest<MapModifyResponse>(`/api/maps/${mapId}/draft`, {
       method: 'PATCH',
       body: jsonBody(body),
     });

@@ -145,6 +145,13 @@ export type MapDraftResponse = {
   savedAt: DateTimeString;
 };
 
+export type MapModifyResponse = {
+  mapId: number;
+  version: number;
+  createdQuestions: Array<{ clientId: string; questionId: number }>;
+  updatedAt: DateTimeString;
+};
+
 export type MapReactionResponse = {
   mapId: number;
   liked?: boolean;
