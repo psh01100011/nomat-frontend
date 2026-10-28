@@ -34,6 +34,9 @@ export const mapApi = {
   list(params: MapListParams) {
     return apiRequest<MapListResponse>(`/api/maps${toQuery(params)}`, { auth: 'optional' });
   },
+  listMine(params: MapListParams) {
+    return apiRequest<MapListResponse>(`/api/maps${toQuery(params)}`);
+  },
   detail(mapId: number) {
     return apiRequest<MapDetail>(`/api/maps/${mapId}`, { auth: 'optional' });
   },
