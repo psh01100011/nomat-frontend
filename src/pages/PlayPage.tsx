@@ -252,6 +252,11 @@ export function PlayPage() {
   const phase = gameState?.phase ?? 'waiting';
   const isImageQuestion = currentQuestion?.mediaSourceType === 'UPLOAD';
   const audioRepeatEnabled = roomQuery.data?.audioRepeatEnabled ?? true;
+
+  useEffect(() => {
+    if (phase === 'ended') socket?.disconnect();
+  }, [phase, socket]);
+
   const synchronizeQuestionAudio = useCallback(() => {
     const audio = audioRef.current;
     if (!audio || !currentQuestion || phase !== 'playing') {

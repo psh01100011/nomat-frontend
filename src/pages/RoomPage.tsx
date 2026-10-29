@@ -294,6 +294,8 @@ export function RoomPage() {
             state:
               event.type === 'MEMBER_KICKED'
                 ? { noticeTitle: '방에서 내보내졌습니다', noticeMessage: '방장이 대기방에서 내보냈습니다.' }
+                : event.closedReason === 'WAITING_TIMEOUT'
+                  ? { noticeTitle: '대기방이 종료되었습니다', noticeMessage: '장시간 게임이 시작되지 않아 대기방이 자동으로 종료되었습니다.' }
                 : { noticeTitle: '방이 종료되었습니다', noticeMessage: '방이 삭제되었거나 종료되었습니다.' },
           });
         }
