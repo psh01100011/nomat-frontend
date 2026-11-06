@@ -1,14 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { DoorOpen, ImageIcon, MessageSquare, Send, SkipForward, Timer, Trophy, Volume2 } from 'lucide-react';
+import { DoorOpen, ImageIcon, MessageSquare, Send, SkipForward, Timer, Trophy, UserMinus } from 'lucide-react';
 import { CSSProperties, KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { Navigate, useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '@/features/auth/auth-context';
-import { addPendingMessage, applyRoomEvent, createInitialGameState } from '@/features/game/game-reducer';
+import type { RoomEventMessage, RoomGameSnapshot } from '@/entities/game';
+import { addPendingMessage, applyRoomEvent, createGameStateFromSnapshot, createInitialGameState } from '@/features/game/game-reducer';
 import { roomEventBuffer } from '@/features/game/room-event-buffer';
 import { createRoomSocket } from '@/features/game/room-socket';
+import { useAudioVolume } from '@/features/game/use-audio-volume';
 import { useSoundEffects } from '@/features/game/use-sound-effects';
 import { currentRoomStorage } from '@/features/rooms/current-room-storage';
 import { roomApi } from '@/features/rooms/room-api';
+import { AdSlot } from '@/shared/ads/AdSlot';
 import { queryKeys } from '@/shared/api/query-keys';
 import { useSingleFlight } from '@/shared/hooks/use-single-flight';
 import { displayNickname } from '@/shared/format/display-labels';
@@ -17,6 +20,7 @@ import { Button } from '@/shared/ui/Button';
 import { EmptyState } from '@/shared/ui/EmptyState';
 import { UserAvatar } from '@/shared/ui/FallbackMedia';
 import { Modal } from '@/shared/ui/Modal';
+import { SoundSettingsButton } from '@/shared/ui/SoundSettingsButton';
 import { RoomHeaderOutletContext } from '@/widgets/AppLayout';
 import styles from './room-pages.module.css';
 
@@ -32,8 +36,9 @@ export function PlayPage() {
   const [now, setNow] = useState(() => Date.now());
   const [exitOpen, setExitOpen] = useState(false);
   const [resultOpen, setResultOpen] = useState(false);
+  const [kickTarget, setKickTarget] = useState<{ userId: number; nickname: string } | null>(null);
   const [skippedQuestionKey, setSkippedQuestionKey] = useState<string | null>(null);
-  const [audioVolume, setAudioVolume] = useState(() => readAudioVolume());
+  const { volume: audioVolume, setVolume: setAudioVolume } = useAudioVolume();
   const initializedRoomId = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -51,6 +56,9 @@ export function PlayPage() {
   const lastSkipVoteCountRef = useRef(0);
   const reportedAudioFailureQuestionKeyRef = useRef<string | null>(null);
   const lastChatSentAtRef = useRef(0);
+  const synchronizingRef = useRef(false);
+  const synchronizationVersionRef = useRef(0);
+  const pendingRoomEventsRef = useRef<RoomEventMessage[]>([]);
 
   useEffect(() => {
     if (!roomId) navigate('/rooms', { replace: true });
@@ -100,15 +108,22 @@ export function PlayPage() {
     },
   });
 
+  const kickMutation = useMutation({
+    mutationFn: (targetUserId: number) => roomApi.kick(roomId ?? 0, targetUserId),
+    onSuccess: () => setKickTarget(null),
+  });
+
   const [gameState, dispatchGame] = useReducer(
     (
       state: ReturnType<typeof createInitialGameState> | null,
       action:
         | { type: 'reset'; room: NonNullable<typeof roomQuery.data> }
+        | { type: 'snapshot'; room: NonNullable<typeof roomQuery.data>; snapshot: RoomGameSnapshot }
         | { type: 'event'; event: Parameters<typeof applyRoomEvent>[1] }
         | { type: 'pending'; content: string; clientMessageId: string },
     ) => {
       if (action.type === 'reset') return createInitialGameState(action.room);
+      if (action.type === 'snapshot') return createGameStateFromSnapshot(action.room, action.snapshot);
       if (!state) return state;
       if (action.type === 'event') return applyRoomEvent(state, action.event, auth.userId);
       return addPendingMessage(state, action.content, action.clientMessageId, auth.user?.nickname ?? '나', auth.userType);
@@ -124,59 +139,106 @@ export function PlayPage() {
     if (bufferedEvent) dispatchGame({ type: 'event', event: bufferedEvent });
   }, [roomId, roomQuery.data]);
 
+  const handleRoomEvent = useCallback((event: RoomEventMessage) => {
+    if (event.type === 'CHAT_MESSAGE') playChat();
+    if (event.type === 'CORRECT_ANSWER') {
+      correctQuestionKeyRef.current = questionKey(
+        event.questionId ?? currentQuestionRef.current.questionId ?? 0,
+        event.questionNumber ?? currentQuestionRef.current.questionNumber ?? 0,
+      );
+      playCorrect();
+    }
+    if (event.type === 'HINT_REVEALED') playHint();
+    if (event.type === 'SKIP_VOTE_UPDATED' && (event.skipVoteCount ?? 0) > lastSkipVoteCountRef.current) {
+      playSkip();
+      lastSkipVoteCountRef.current = event.skipVoteCount ?? lastSkipVoteCountRef.current;
+    }
+    if (
+      event.type === 'QUESTION_ENDED' &&
+      correctQuestionKeyRef.current !==
+        questionKey(currentQuestionRef.current.questionId ?? 0, currentQuestionRef.current.questionNumber ?? 0)
+    ) {
+      playQuestionEnd();
+    }
+    dispatchGame({ type: 'event', event });
+    if (
+      event.type === 'MEMBER_JOINED' ||
+      event.type === 'MEMBER_LEFT' ||
+      event.type === 'HOST_CHANGED' ||
+      event.type === 'MEMBER_KICKED' ||
+      event.type === 'ROOM_SETTINGS_UPDATED'
+    ) {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.roomDetail(roomId ?? 0) });
+    }
+    if (event.type === 'ROOM_CLOSED' || (event.type === 'MEMBER_KICKED' && event.targetUserId === auth.userId)) {
+      currentRoomStorage.clear();
+      navigate('/rooms', {
+        replace: true,
+        state:
+          event.type === 'MEMBER_KICKED'
+            ? { noticeTitle: '방에서 내보내졌습니다', noticeMessage: '방장이 게임방에서 내보냈습니다.' }
+            : { noticeTitle: '방이 종료되었습니다', noticeMessage: '방이 삭제되었거나 종료되었습니다.' },
+      });
+    }
+  }, [auth.userId, navigate, playChat, playCorrect, playHint, playQuestionEnd, playSkip, queryClient, roomId]);
+
+  const synchronizeGameState = useCallback(async () => {
+    if (!roomId) return;
+    const synchronizationVersion = synchronizationVersionRef.current + 1;
+    synchronizationVersionRef.current = synchronizationVersion;
+    synchronizingRef.current = true;
+    try {
+      const [room, snapshot] = await Promise.all([
+        queryClient.fetchQuery({
+          queryKey: queryKeys.roomDetail(roomId),
+          queryFn: () => roomApi.detail(roomId),
+          retry: 2,
+        }),
+        queryClient.fetchQuery({
+          queryKey: queryKeys.roomGameSnapshot(roomId),
+          queryFn: () => roomApi.gameSnapshot(roomId),
+          retry: 2,
+        }),
+      ]);
+      if (synchronizationVersionRef.current !== synchronizationVersion) return;
+      queryClient.setQueryData(queryKeys.roomDetail(roomId), room);
+      dispatchGame({ type: 'snapshot', room, snapshot });
+      setSkippedQuestionKey(
+        snapshot.currentUserSkipVoted && snapshot.currentQuestion
+          ? questionKey(snapshot.currentQuestion.questionId, snapshot.currentQuestion.questionNumber)
+          : null,
+      );
+    } catch {
+      if (synchronizationVersionRef.current === synchronizationVersion) {
+        setSocketError('게임 상태를 다시 불러오지 못했습니다. 새로고침 후 다시 시도해주세요.');
+      }
+    } finally {
+      if (synchronizationVersionRef.current === synchronizationVersion) {
+        synchronizingRef.current = false;
+        const pendingEvents = pendingRoomEventsRef.current.splice(0);
+        pendingEvents.forEach(handleRoomEvent);
+      }
+    }
+  }, [handleRoomEvent, queryClient, roomId]);
+
   const socket = useMemo(() => {
     if (!roomId) return null;
     return createRoomSocket({
       roomId,
       onEvent: (event) => {
-        if (event.type === 'CHAT_MESSAGE') playChat();
-        if (event.type === 'CORRECT_ANSWER') {
-          correctQuestionKeyRef.current = questionKey(
-            event.questionId ?? currentQuestionRef.current.questionId ?? 0,
-            event.questionNumber ?? currentQuestionRef.current.questionNumber ?? 0,
-          );
-          playCorrect();
+        if (synchronizingRef.current) {
+          pendingRoomEventsRef.current.push(event);
+          return;
         }
-        if (event.type === 'HINT_REVEALED') playHint();
-        if (event.type === 'SKIP_VOTE_UPDATED' && (event.skipVoteCount ?? 0) > lastSkipVoteCountRef.current) {
-          playSkip();
-          lastSkipVoteCountRef.current = event.skipVoteCount ?? lastSkipVoteCountRef.current;
-        }
-        if (
-          event.type === 'QUESTION_ENDED' &&
-          correctQuestionKeyRef.current !==
-            questionKey(currentQuestionRef.current.questionId ?? 0, currentQuestionRef.current.questionNumber ?? 0)
-        ) {
-          playQuestionEnd();
-        }
-        dispatchGame({ type: 'event', event });
-        if (
-          event.type === 'MEMBER_JOINED' ||
-          event.type === 'MEMBER_LEFT' ||
-          event.type === 'HOST_CHANGED' ||
-          event.type === 'MEMBER_KICKED' ||
-          event.type === 'ROOM_SETTINGS_UPDATED'
-        ) {
-          void queryClient.invalidateQueries({ queryKey: queryKeys.roomDetail(roomId) });
-        }
-        if (event.type === 'ROOM_CLOSED' || (event.type === 'MEMBER_KICKED' && event.targetUserId === auth.userId)) {
-          currentRoomStorage.clear();
-          navigate('/rooms', {
-            replace: true,
-            state:
-              event.type === 'MEMBER_KICKED'
-                ? { noticeTitle: '방에서 내보내졌습니다', noticeMessage: '방장이 게임방에서 내보냈습니다.' }
-                : { noticeTitle: '방이 종료되었습니다', noticeMessage: '방이 삭제되었거나 종료되었습니다.' },
-          });
-        }
+        handleRoomEvent(event);
       },
       onError: (message) => setSocketError(socketErrorMessage(message)),
       onReconnect: () => {
         setSocketError('');
-        void queryClient.invalidateQueries({ queryKey: queryKeys.roomDetail(roomId) });
+        void synchronizeGameState();
       },
     });
-  }, [auth.userId, navigate, playChat, playCorrect, playHint, playQuestionEnd, playSkip, queryClient, roomId]);
+  }, [handleRoomEvent, roomId, synchronizeGameState]);
 
   useEffect(() => {
     if (!socket) return undefined;
@@ -189,6 +251,49 @@ export function PlayPage() {
   const currentQuestion = gameState?.currentQuestion ?? null;
   const phase = gameState?.phase ?? 'waiting';
   const isImageQuestion = currentQuestion?.mediaSourceType === 'UPLOAD';
+  const audioRepeatEnabled = roomQuery.data?.audioRepeatEnabled ?? true;
+
+  useEffect(() => {
+    if (phase === 'ended') socket?.disconnect();
+  }, [phase, socket]);
+
+  const synchronizeQuestionAudio = useCallback(() => {
+    const audio = audioRef.current;
+    if (!audio || !currentQuestion || phase !== 'playing') {
+      audio?.pause();
+      return;
+    }
+
+    if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+
+    const remainingSeconds = getRemainingMs(
+      currentQuestion.endsAt,
+      currentQuestion.durationSeconds,
+      Date.now(),
+    ) / 1000;
+    const elapsedSeconds = Math.max(0, currentQuestion.durationSeconds - remainingSeconds);
+
+    if (audioRepeatEnabled) {
+      audio.currentTime = elapsedSeconds % audio.duration;
+    } else if (elapsedSeconds >= audio.duration) {
+      audio.currentTime = audio.duration;
+      audio.pause();
+      return;
+    } else {
+      audio.currentTime = elapsedSeconds;
+    }
+
+    void audio.play().catch(() => {
+      // Browser autoplay policy may require a user interaction before playback.
+    });
+  }, [
+    currentQuestion?.durationSeconds,
+    currentQuestion?.endsAt,
+    currentQuestion?.questionId,
+    currentQuestion?.questionNumber,
+    phase,
+    audioRepeatEnabled,
+  ]);
   const keepChatFocus = useCallback(() => {
     window.requestAnimationFrame(() => inputRef.current?.focus());
   }, []);
@@ -225,9 +330,18 @@ export function PlayPage() {
   }, [currentQuestion, gameState?.skipVoteCount]);
 
   useEffect(() => {
-    localStorage.setItem(AUDIO_VOLUME_KEY, String(audioVolume));
     if (audioRef.current) audioRef.current.volume = audioVolume;
   }, [audioVolume, currentQuestion?.mediaUrl]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (phase !== 'playing') {
+      audio.pause();
+      return;
+    }
+    if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) synchronizeQuestionAudio();
+  }, [currentQuestion?.mediaUrl, phase, synchronizeQuestionAudio]);
 
   useEffect(() => {
     if (!currentQuestion?.endsAt || phase === 'ended') return;
@@ -242,6 +356,7 @@ export function PlayPage() {
     const handleShortcut = (event: globalThis.KeyboardEvent) => {
       if (event.isComposing) return;
       if (event.key !== 'Escape') return;
+      if (document.querySelector('[data-sound-settings-open="true"]')) return;
       event.preventDefault();
       sendSkip();
     };
@@ -265,19 +380,31 @@ export function PlayPage() {
       return;
     }
     setRoomHeader({
-      title: room.title,
-      description: room.map.title,
       actions: (
-        <Button variant="danger" icon={<DoorOpen size={17} />} onClick={() => setExitOpen(true)}>
-          나가기
-        </Button>
+        <>
+          <SoundSettingsButton
+            audioVolume={audioVolume}
+            onAudioVolumeChange={setAudioVolume}
+            onSoundVolumeChange={setSoundVolume}
+            showAudioVolume={room.map.questionType === 'AUDIO'}
+            soundVolume={soundVolume}
+          />
+          <Button
+            icon={<DoorOpen size={17} />}
+            title="게임방 나가기"
+            variant="danger"
+            onClick={() => setExitOpen(true)}
+          >
+            나가기
+          </Button>
+        </>
       ),
     });
     return () => setRoomHeader(null);
   }, [roomQuery.data, setRoomHeader]);
 
   useEffect(() => {
-    if (exitOpen || resultOpen) return;
+    if (exitOpen || resultOpen || kickTarget) return;
     const handleEnterFocus = (event: globalThis.KeyboardEvent) => {
       if (event.key !== 'Enter' || event.isComposing) return;
       if (isEditableTarget(event.target)) return;
@@ -286,7 +413,7 @@ export function PlayPage() {
     };
     window.addEventListener('keydown', handleEnterFocus);
     return () => window.removeEventListener('keydown', handleEnterFocus);
-  }, [exitOpen, resultOpen]);
+  }, [exitOpen, kickTarget, resultOpen]);
 
   const remainingMs = currentQuestion ? getRemainingMs(currentQuestion.endsAt, currentQuestion.durationSeconds, now) : 0;
   const nextQuestionMs =
@@ -319,6 +446,7 @@ export function PlayPage() {
   const room = roomQuery.data;
   const scores = Object.values(gameState.scores).sort((a, b) => b.score - a.score);
   const membersById = new Map(room.members.map((member) => [member.userId, member]));
+  const isHost = room.hostUserId === auth.userId;
   const compactScores = scores.length > 12;
   const chatAuthorColors = buildAuthorColorMap(gameState.messages);
 
@@ -346,12 +474,13 @@ export function PlayPage() {
   };
 
   return (
-    <section className={styles.shell}>
+    <section className={`${styles.shell} ${styles.lobbyAdShell}`}>
       {socketError && <Alert tone="danger">실시간 연결 오류: {socketError}</Alert>}
-      <div className={`${styles.roomLayout} ${questionLayoutClass(currentQuestion?.mediaSourceType)}`}>
-        <aside className={styles.side}>
+      {kickMutation.isError && <Alert tone="danger">참가자를 내보내지 못했습니다.</Alert>}
+      <div className={styles.roomExperience}>
+        <div className={`${styles.roomLayout} ${questionLayoutClass(currentQuestion?.mediaSourceType)}`}>
+          <aside className={styles.side}>
           <div className={styles.sideBody}>
-            <SoundControl volume={soundVolume} onChange={setSoundVolume} />
             <h2>점수</h2>
             <div className={`${styles.scoreGrid} ${compactScores ? styles.scoreGridCompact : ''}`}>
               {scores.map((score, index) => (
@@ -369,12 +498,23 @@ export function PlayPage() {
                       <span>{score.score}점</span>
                     </span>
                   </span>
+                  {isHost && gameState.phase !== 'ended' && score.userId !== auth.userId && (
+                    <button
+                      className={styles.scoreKickButton}
+                      type="button"
+                      aria-label={`${displayNickname(score.nickname)} 내보내기`}
+                      title="참가자 내보내기"
+                      onClick={() => setKickTarget({ userId: score.userId, nickname: score.nickname })}
+                    >
+                      <UserMinus size={15} />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
           </div>
-        </aside>
-        <main className={styles.mainPanel}>
+          </aside>
+          <main className={styles.mainPanel}>
           <section className={styles.section}>
             {gameState.phase === 'ended' ? (
               <EmptyState title="게임 종료" description={gameState.endedReason ?? '모든 문제가 종료되었습니다.'} />
@@ -403,21 +543,13 @@ export function PlayPage() {
                   </div>
                 )}
                 {currentQuestion.mediaUrl && !isImageQuestion && (
-                  <div className={styles.mediaPanel}>
-                    <audio ref={audioRef} autoPlay loop src={currentQuestion.mediaUrl} onError={reportAudioLoadFailure} />
-                    <div className={styles.audioControl}>
-                      <Volume2 size={18} />
-                      <span>음량</span>
-                      <input
-                        aria-label="문제 음량"
-                        max={100}
-                        min={0}
-                        type="range"
-                        value={Math.round(audioVolume * 100)}
-                        onChange={(event) => setAudioVolume(Number(event.target.value) / 100)}
-                      />
-                    </div>
-                  </div>
+                  <audio
+                    ref={audioRef}
+                    loop={audioRepeatEnabled}
+                    src={currentQuestion.mediaUrl}
+                    onError={reportAudioLoadFailure}
+                    onLoadedMetadata={synchronizeQuestionAudio}
+                  />
                 )}
                 {!currentQuestion.mediaUrl && isImageQuestion && (
                   <div className={styles.mediaPanel}>
@@ -499,7 +631,20 @@ export function PlayPage() {
               전송
             </Button>
           </div>
-        </main>
+          </main>
+        </div>
+        <AdSlot
+          className={`${styles.roomAdRail} ${styles.contentAdRailLeft}`}
+          minViewportWidth={1480}
+          placement="gameRoomLeft"
+          variant="vertical"
+        />
+        <AdSlot
+          className={`${styles.roomAdRail} ${styles.contentAdRailRight}`}
+          minViewportWidth={1480}
+          placement="gameRoomRight"
+          variant="vertical"
+        />
       </div>
       <Modal
         open={exitOpen}
@@ -517,6 +662,30 @@ export function PlayPage() {
         }
       >
         <p className="muted">현재 게임방에서 나가고 방 목록으로 이동합니다.</p>
+      </Modal>
+      <Modal
+        open={Boolean(kickTarget)}
+        title="참가자 내보내기"
+        onClose={() => setKickTarget(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setKickTarget(null)}>
+              취소
+            </Button>
+            <Button
+              variant="danger"
+              icon={<UserMinus size={17} />}
+              disabled={kickMutation.isPending}
+              onClick={() => kickTarget && runOnce('game-kick', () => kickMutation.mutateAsync(kickTarget.userId))}
+            >
+              내보내기
+            </Button>
+          </>
+        }
+      >
+        <p className="muted">
+          {displayNickname(kickTarget?.nickname)}님을 게임방에서 내보냅니다. 해당 사용자의 점수는 게임 결과에서 제외됩니다.
+        </p>
       </Modal>
       <Modal
         open={gameState.phase === 'ended' && resultOpen}
@@ -586,7 +755,6 @@ function formatSeconds(totalSeconds: number) {
 
 const NEXT_QUESTION_DELAY_MS = 3000;
 const DEFAULT_HINT_TRIGGER_SECONDS = 10;
-const AUDIO_VOLUME_KEY = 'nomat.audioVolume';
 const CHAT_AUTHOR_COLORS = ['#15803d', '#b45309', '#7c3aed', '#0f766e', '#be123c', '#c2410c', '#a16207', '#64748b'];
 
 function socketErrorMessage(messageCode: string) {
@@ -621,28 +789,6 @@ function questionLayoutClass(mediaSourceType: string | null | undefined) {
   if (mediaSourceType === 'UPLOAD') return styles.imageQuestionLayout;
   if (mediaSourceType) return styles.audioQuestionLayout;
   return styles.textQuestionLayout;
-}
-
-function readAudioVolume() {
-  const stored = Number(localStorage.getItem(AUDIO_VOLUME_KEY));
-  return Number.isFinite(stored) ? Math.max(0, Math.min(1, stored)) : 0.8;
-}
-
-function SoundControl({ volume, onChange }: { volume: number; onChange: (volume: number) => void }) {
-  return (
-    <div className={styles.soundControl}>
-      <Volume2 size={16} />
-      <span>효과음</span>
-      <input
-        aria-label="효과음 음량"
-        max={100}
-        min={0}
-        type="range"
-        value={Math.round(volume * 100)}
-        onChange={(event) => onChange(Number(event.target.value) / 100)}
-      />
-    </div>
-  );
 }
 
 function isEditableTarget(target: EventTarget | null) {

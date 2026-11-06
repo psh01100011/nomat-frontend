@@ -1,15 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Clock3, DoorOpen, Link2, Play, Send, Settings, Trash2, UserMinus, UsersRound, Volume2 } from 'lucide-react';
+import { Check, Clock3, DoorOpen, Link2, Play, Send, Settings, Trash2, UserMinus, UsersRound } from 'lucide-react';
 import { type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '@/features/auth/auth-context';
 import { roomEventBuffer } from '@/features/game/room-event-buffer';
 import { createRoomSocket } from '@/features/game/room-socket';
+import { useAudioVolume } from '@/features/game/use-audio-volume';
 import { useSoundEffects } from '@/features/game/use-sound-effects';
 import { roomApi } from '@/features/rooms/room-api';
 import { currentRoomStorage } from '@/features/rooms/current-room-storage';
 import { type ChatMessage } from '@/entities/game';
 import { RoomDetail, RoomMember } from '@/entities/room';
+import { AdSlot } from '@/shared/ads/AdSlot';
 import { toApiErrorMessage } from '@/shared/api/http-client';
 import { queryKeys } from '@/shared/api/query-keys';
 import { useSingleFlight } from '@/shared/hooks/use-single-flight';
@@ -22,6 +24,7 @@ import { MapArtwork, UserAvatar } from '@/shared/ui/FallbackMedia';
 import { Modal } from '@/shared/ui/Modal';
 import { NumericTextInput } from '@/shared/ui/NumericTextInput';
 import { StatusBadge } from '@/shared/ui/StatusBadge';
+import { SoundSettingsButton } from '@/shared/ui/SoundSettingsButton';
 import { RoomHeaderOutletContext } from '@/widgets/AppLayout';
 import styles from './room-pages.module.css';
 
@@ -52,6 +55,7 @@ export function RoomPage() {
   const lastChatSentAtRef = useRef(0);
   const previousMembersRef = useRef<Map<number, Pick<RoomMember, 'nickname' | 'userType'>> | null>(null);
   const { volume: soundVolume, setVolume: setSoundVolume, playChat } = useSoundEffects();
+  const { volume: audioVolume, setVolume: setAudioVolume } = useAudioVolume();
 
   useEffect(() => {
     if (!roomId) navigate('/rooms', { replace: true });
@@ -235,6 +239,21 @@ export function RoomPage() {
             },
           ].slice(-80));
         }
+        if (event.type === 'HOST_CHANGED' && event.newHostUserId) {
+          const currentRoom = queryClient.getQueryData<RoomDetail>(queryKeys.roomDetail(roomId));
+          const newHost = currentRoom?.members.find((member) => member.userId === event.newHostUserId);
+          setMessages((current) => [
+            ...current,
+            {
+              id: `host-changed-${event.occurredAt ?? Date.now()}-${event.newHostUserId}`,
+              author: '시스템',
+              content: `${displayNickname(newHost?.nickname ?? '참가자')}님이 새로운 방장이 되었습니다.`,
+              pending: false,
+              mine: false,
+              system: true,
+            },
+          ].slice(-80));
+        }
         if (
           event.type === 'MEMBER_JOINED' ||
           event.type === 'MEMBER_LEFT' ||
@@ -275,6 +294,8 @@ export function RoomPage() {
             state:
               event.type === 'MEMBER_KICKED'
                 ? { noticeTitle: '방에서 내보내졌습니다', noticeMessage: '방장이 대기방에서 내보냈습니다.' }
+                : event.closedReason === 'WAITING_TIMEOUT'
+                  ? { noticeTitle: '대기방이 종료되었습니다', noticeMessage: '장시간 게임이 시작되지 않아 대기방이 자동으로 종료되었습니다.' }
                 : { noticeTitle: '방이 종료되었습니다', noticeMessage: '방이 삭제되었거나 종료되었습니다.' },
           });
         }
@@ -368,29 +389,21 @@ export function RoomPage() {
     }
     const isHost = room.hostUserId === auth.userId;
     setRoomHeader({
-      title: room.title,
-      description: room.map.title,
       actions: (
         <>
+          <SoundSettingsButton
+            audioVolume={audioVolume}
+            onAudioVolumeChange={setAudioVolume}
+            onSoundVolumeChange={setSoundVolume}
+            showAudioVolume={room.map.questionType === 'AUDIO'}
+            soundVolume={soundVolume}
+          />
           <Button
-            variant="secondary"
-            icon={inviteFeedback === 'copied' ? <Check size={17} /> : <Link2 size={17} />}
-            disabled={inviteMutation.isPending}
-            onClick={() => void copyInviteLink()}
+            icon={<DoorOpen size={17} />}
+            title="대기방 나가기"
+            variant="danger"
+            onClick={() => setExitOpen(true)}
           >
-            초대 링크 복사
-          </Button>
-          {isHost && (
-            <Button
-              variant="secondary"
-              icon={<Settings size={17} />}
-              disabled={settingsMutation.isPending}
-              onClick={() => setSettingsOpen(true)}
-            >
-              설정
-            </Button>
-          )}
-          <Button variant="danger" icon={<DoorOpen size={17} />} onClick={() => setExitOpen(true)}>
             나가기
           </Button>
           {isHost && (
@@ -458,7 +471,7 @@ export function RoomPage() {
   };
 
   return (
-    <section className={styles.shell}>
+    <section className={`${styles.shell} ${styles.lobbyAdShell}`}>
       {startMutation.isError && <Alert tone="danger">게임을 시작하지 못했습니다.</Alert>}
       {deleteMutation.isError && <Alert tone="danger">방을 삭제하지 못했습니다.</Alert>}
       {kickMutation.isError && <Alert tone="danger">참가자를 내보내지 못했습니다.</Alert>}
@@ -468,8 +481,9 @@ export function RoomPage() {
       {socketError && <Alert tone="danger">실시간 연결 오류: {socketError}</Alert>}
       {inviteFeedback === 'failed' && <Alert tone="danger">초대 링크를 복사하지 못했습니다. 잠시 후 다시 시도해주세요.</Alert>}
       {isStarting && <Alert>게임을 준비하고 있습니다. 첫 문제가 시작되면 자동으로 이동합니다.</Alert>}
-      <div className={styles.roomLayout}>
-        <aside className={`${styles.side} ${styles.lobbySide} ${compactMembers ? styles.compactMembers : ''}`}>
+      <div className={styles.roomExperience}>
+        <div className={styles.roomLayout}>
+          <aside className={`${styles.side} ${styles.lobbySide} ${compactMembers ? styles.compactMembers : ''}`}>
           <div className={styles.mapThumb}>
             <MapArtwork title={room.map.title} imageUrl={room.map.thumbnailUrl} />
           </div>
@@ -483,13 +497,22 @@ export function RoomPage() {
               )}
               <span className={styles.roomCategoryText}>{room.map.categoryName}</span>
             </div>
-            <SoundControl volume={soundVolume} onChange={setSoundVolume} />
           </div>
           <div className={styles.memberPanel}>
             <div className={styles.memberHeader}>
               <h2>참가자</h2>
               <span>{room.memberCount}/{room.maxPlayers}</span>
             </div>
+            <Button
+              className={styles.inviteButton}
+              disabled={inviteMutation.isPending}
+              icon={inviteFeedback === 'copied' ? <Check size={16} /> : <Link2 size={16} />}
+              size="sm"
+              variant="secondary"
+              onClick={() => void copyInviteLink()}
+            >
+              {inviteFeedback === 'copied' ? '초대 링크 복사됨' : '초대 링크 복사'}
+            </Button>
             <ul
               className={styles.memberList}
               style={{ '--member-slot-count': room.maxPlayers } as CSSProperties}
@@ -531,9 +554,24 @@ export function RoomPage() {
               })}
             </ul>
           </div>
-        </aside>
-        <main className={`${styles.mainPanel} ${styles.lobbyPanel}`}>
+          </aside>
+          <main className={`${styles.mainPanel} ${styles.lobbyPanel}`}>
           <div className={`${styles.section} ${styles.lobbyHero}`}>
+            <div className={styles.lobbySettingsHeader}>
+              <strong>게임 설정</strong>
+              {isHost && (
+                <Button
+                  disabled={settingsMutation.isPending}
+                  icon={<Settings size={16} />}
+                  size="sm"
+                  title="방 설정"
+                  variant="secondary"
+                  onClick={() => setSettingsOpen(true)}
+                >
+                  방 설정
+                </Button>
+              )}
+            </div>
             <div className={styles.lobbyStats}>
               <div>
                 <UsersRound size={18} />
@@ -587,7 +625,20 @@ export function RoomPage() {
               전송
             </Button>
           </div>
-        </main>
+          </main>
+        </div>
+        <AdSlot
+          className={`${styles.roomAdRail} ${styles.contentAdRailLeft}`}
+          minViewportWidth={1480}
+          placement="roomLobbyLeft"
+          variant="vertical"
+        />
+        <AdSlot
+          className={`${styles.roomAdRail} ${styles.contentAdRailRight}`}
+          minViewportWidth={1480}
+          placement="roomLobbyRight"
+          variant="vertical"
+        />
       </div>
       <Modal
         open={settingsOpen}
@@ -763,23 +814,6 @@ function validateRoomSettings(
     return { field: 'answerTimeLimitSeconds' as const, message: `${roomTimeLimitLabel(questionType)}은 5-300초로 설정해주세요.` };
   }
   return null;
-}
-
-function SoundControl({ volume, onChange }: { volume: number; onChange: (volume: number) => void }) {
-  return (
-    <div className={styles.soundControl}>
-      <Volume2 size={16} />
-      <span>효과음</span>
-      <input
-        aria-label="효과음 음량"
-        max={100}
-        min={0}
-        type="range"
-        value={Math.round(volume * 100)}
-        onChange={(event) => onChange(Number(event.target.value) / 100)}
-      />
-    </div>
-  );
 }
 
 function boundedNumber(value: string, min: number, max: number) {

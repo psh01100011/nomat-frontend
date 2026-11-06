@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ImagePlus, Play, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
 import { KeyboardEvent as ReactKeyboardEvent, RefObject, useEffect, useMemo, useRef, useState } from 'react';
-import { useBlocker, useNavigate, useParams } from 'react-router-dom';
+import { useBlocker, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { CATEGORY_OPTIONS } from '@/entities/category';
 import {
   AudioProcessingFailureCode,
@@ -75,6 +75,11 @@ type EditorSnapshotState = {
   deletedQuestionIds: number[];
 };
 
+type EditorNavigationState = {
+  draftSaved?: boolean;
+  editorStep?: 1 | 2;
+};
+
 const emptyQuestion = (): LocalQuestion => ({
   id: crypto.randomUUID(),
   promptText: '',
@@ -94,9 +99,13 @@ const MAX_MAP_QUESTIONS = 300;
 export function MapEditorPage() {
   const runOnce = useSingleFlight();
   const navigate = useNavigate();
+  const location = useLocation();
   const { mapId } = useParams();
   const editorMapId = mapId ? Number(mapId) : null;
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2>(() => {
+    const navigationStep = (location.state as EditorNavigationState | null)?.editorStep;
+    return navigationStep === 2 ? 2 : 1;
+  });
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [categoryId, setCategoryId] = useState(CATEGORY_OPTIONS[0]?.categoryId ?? 1);
@@ -112,6 +121,9 @@ export function MapEditorPage() {
   const [pendingQuestionType, setPendingQuestionType] = useState<QuestionType | null>(null);
   const [initialEditorSnapshot, setInitialEditorSnapshot] = useState<string | null>(null);
   const [formError, setFormError] = useState('');
+  const [draftSavedModalOpen, setDraftSavedModalOpen] = useState(
+    () => Boolean((location.state as EditorNavigationState | null)?.draftSaved),
+  );
   const [fieldErrors, setFieldErrors] = useState<{ title?: string; questions?: string }>({});
   const [unresolvedSourceQuestionIds, setUnresolvedSourceQuestionIds] = useState<string[]>([]);
   const titleRef = useRef<HTMLInputElement | null>(null);
@@ -130,6 +142,7 @@ export function MapEditorPage() {
     if (!editorQuery.data) return;
     const editor = editorQuery.data;
     if (initializedMapIdRef.current === editor.mapId) {
+      if (editor.status === 'DRAFT') return;
       setQuestions((current) => mergeQuestionProcessingState(current, editor.questions));
       setEditingQuestion((current) => (current ? mergeQuestionProcessingState([current], editor.questions)[0] : null));
       return;
@@ -140,6 +153,7 @@ export function MapEditorPage() {
     const loadedCategoryId = editor.categoryId ?? CATEGORY_OPTIONS[0]?.categoryId ?? 1;
     const loadedQuestionType = editor.questionType ?? 'AUDIO';
     const loadedVisibility = editor.visibility === 'UNLISTED' ? 'PRIVATE' : editor.visibility;
+    const showAudioProcessingState = editor.status !== 'DRAFT';
     const loadedQuestions: LocalQuestion[] = editor.questions.map((question) => ({
       id: String(question.questionId),
       questionId: question.questionId,
@@ -153,11 +167,11 @@ export function MapEditorPage() {
       imageAssetId: question.media?.assetId ?? undefined,
       imageUrl: question.media?.assetUrl ?? null,
       imageCropSettings: { x: 50, y: 50, zoom: 1 },
-      processingStatus: question.media?.processingStatus,
-      failureCode: question.media?.failureCode,
-      failureType: question.media?.failureType,
-      failureMessage: question.media?.failureMessage,
-      canRetry: question.media?.canRetry,
+      processingStatus: showAudioProcessingState ? question.media?.processingStatus : undefined,
+      failureCode: showAudioProcessingState ? question.media?.failureCode : undefined,
+      failureType: showAudioProcessingState ? question.media?.failureType : undefined,
+      failureMessage: showAudioProcessingState ? question.media?.failureMessage : undefined,
+      canRetry: showAudioProcessingState ? question.media?.canRetry : undefined,
       sourceFailureResolved: false,
     }));
     setTitle(loadedTitle);
@@ -183,7 +197,16 @@ export function MapEditorPage() {
         deletedQuestionIds: [],
       }),
     );
+    allowNavigationRef.current = false;
   }, [editorQuery.data]);
+
+  useEffect(() => {
+    const state = location.state as EditorNavigationState | null;
+    if (!state?.draftSaved) return;
+    if (state.editorStep) setStep(state.editorStep);
+    setDraftSavedModalOpen(true);
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [location.pathname, location.search, location.state, navigate]);
 
   useEffect(() => {
     if (!editorQuery.isError) return;
@@ -244,6 +267,23 @@ export function MapEditorPage() {
       );
       const questionPairs = questions.map((question, index) => ({ local: question, built: builtQuestions[index] }));
 
+      if (editorMapId && editorQuery.data && draft) {
+        return mapApi.updateDraft(editorMapId, {
+          version: editorQuery.data.version,
+          title: title.trim() || undefined,
+          categoryId,
+          questionType,
+          thumbnailAssetId: nextThumbnailAssetId,
+          description: cleanDescription(description),
+          visibility,
+          questions: questionPairs.map((pair) => ({
+            questionId: pair.local.questionId,
+            clientId: pair.local.id,
+            ...pair.built,
+          })),
+        });
+      }
+
       if (editorMapId && editorQuery.data) {
         const originalQuestionsById = new Map(editorQuery.data.questions.map((question) => [question.questionId, question]));
         return mapApi.update(editorMapId, {
@@ -292,7 +332,21 @@ export function MapEditorPage() {
         return;
       }
     },
-    onSuccess: () => {
+    onSuccess: async (_response, draft) => {
+      if (editorMapId && draft) {
+        initializedMapIdRef.current = null;
+        await editorQuery.refetch();
+        setDraftSavedModalOpen(true);
+        return;
+      }
+      if (draft) {
+        allowNavigationRef.current = true;
+        navigate(`/maps/${_response.mapId}/edit`, {
+          replace: true,
+          state: { draftSaved: true, editorStep: step } satisfies EditorNavigationState,
+        });
+        return;
+      }
       allowNavigationRef.current = true;
       navigate('/me/maps');
     },
@@ -626,7 +680,7 @@ export function MapEditorPage() {
             <Button variant="secondary" onClick={() => setStep(1)}>
               이전 단계로
             </Button>
-            {!editorMapId && (
+            {(!editorMapId || editorQuery.data?.status === 'DRAFT') && (
               <Button variant="secondary" icon={<Save size={17} />} onClick={() => runOnce('map-save', () => saveMutation.mutateAsync(true))} disabled={saveMutation.isPending}>
                 임시저장
               </Button>
@@ -708,6 +762,15 @@ export function MapEditorPage() {
         }
       >
         <p className="muted">저장하지 않은 맵 정보와 문제는 사라집니다.{'\n'}작성을 그만하고 나갈까요?</p>
+      </Modal>
+
+      <Modal
+        open={draftSavedModalOpen}
+        title="임시저장"
+        onClose={() => setDraftSavedModalOpen(false)}
+        footer={<Button onClick={() => setDraftSavedModalOpen(false)}>확인</Button>}
+      >
+        <p>임시저장되었습니다.</p>
       </Modal>
 
       <Modal
@@ -1392,6 +1455,7 @@ function mergeQuestionProcessingState(current: LocalQuestion[], serverQuestions:
 }
 
 function hasActiveEditorAudioProcessing(editor?: MapEditorDetail) {
+  if (editor?.status === 'DRAFT') return false;
   return editor?.questions.some((question) => {
     const status = question.media?.processingStatus;
     return status === 'QUEUED' || status === 'PROCESSING' || status === 'RETRYING';

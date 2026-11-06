@@ -6,6 +6,7 @@ import { CATEGORY_OPTIONS } from '@/entities/category';
 import { MapListItem } from '@/entities/map';
 import { MapDetailDialog } from '@/features/maps/MapDetailDialog';
 import { mapApi } from '@/features/maps/map-api';
+import { AdSlot } from '@/shared/ads/AdSlot';
 import { queryKeys } from '@/shared/api/query-keys';
 import { displayNickname, questionTypeLabel } from '@/shared/format/display-labels';
 import { Alert } from '@/shared/ui/Alert';
@@ -38,7 +39,7 @@ export function MapListPage() {
   const applySearch = () => setParams({ ...params, keyword: keywordInput, page: 0 });
 
   return (
-    <section className={styles.shell}>
+    <section className={`${styles.shell} ${styles.adShell}`}>
       <div className={styles.browseToolbar}>
         <div className={styles.browseTabs}>
           <button className={styles.browseTabActive} type="button">맵</button>
@@ -64,6 +65,8 @@ export function MapListPage() {
           </select>
         </div>
       </div>
+      <AdSlot className={`${styles.sideAd} ${styles.sideAdLeft}`} minViewportWidth={1480} placement="mapListLeft" variant="vertical" />
+      <AdSlot className={`${styles.sideAd} ${styles.sideAdRight}`} minViewportWidth={1480} placement="mapListRight" variant="vertical" />
       {mapsQuery.isError && <Alert tone="danger">맵 목록을 불러오지 못했습니다.</Alert>}
       {mapsQuery.isLoading ? <EmptyState title="맵을 불러오는 중입니다." /> : mapsQuery.data?.maps.length ? (
         <>
@@ -71,6 +74,13 @@ export function MapListPage() {
           <Pagination page={params.page} totalPages={mapsQuery.data.totalPages} onChange={(page) => setParams({ ...params, page })} />
         </>
       ) : <EmptyState title="표시할 맵이 없습니다." />}
+      <AdSlot
+        className={styles.footerAd}
+        maxViewportWidth={1479}
+        minViewportWidth={861}
+        placement="mapListInline"
+        variant="horizontal"
+      />
       <MapDetailDialog mapId={selectedMapId} onClose={closeMapDetail} />
     </section>
   );

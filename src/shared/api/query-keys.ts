@@ -7,4 +7,5 @@ export const queryKeys = {
   rooms: (params: Record<string, unknown>) => ['rooms', params] as const,
   currentRoom: ['rooms', 'current'] as const,
   roomDetail: (roomId: number) => ['room-detail', roomId] as const,
+  roomGameSnapshot: (roomId: number) => ['room-game-snapshot', roomId] as const,
 };

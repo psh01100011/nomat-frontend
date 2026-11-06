@@ -1,0 +1,33 @@
+.slot {
+  overflow: hidden;
+}
+
+.horizontal {
+  width: 100%;
+  min-height: 100px;
+}
+
+.vertical {
+  width: 120px;
+  min-height: 600px;
+}
+
+.slot ins {
+  width: 100%;
+  min-height: inherit;
+  display: block;
+}
+
+.placeholder {
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--color-line-strong);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-surface-muted) 72%, transparent);
+  color: var(--color-ink-soft);
+}
+
+.placeholder span {
+  font-size: 0.72rem;
+  font-weight: 800;
+}

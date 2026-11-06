@@ -29,10 +29,11 @@ import styles from '@/pages/map-pages.module.css';
 
 type MapDetailDialogProps = {
   mapId: number | null;
+  publicActionsEnabled?: boolean;
   onClose: () => void;
 };
 
-export function MapDetailDialog({ mapId, onClose }: MapDetailDialogProps) {
+export function MapDetailDialog({ mapId, publicActionsEnabled = true, onClose }: MapDetailDialogProps) {
   const auth = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -207,7 +208,7 @@ export function MapDetailDialog({ mapId, onClose }: MapDetailDialogProps) {
         title={selectedMap?.title ?? '맵 상세'}
         width={720}
         onClose={onClose}
-        footer={selectedMap ? (
+        footer={selectedMap && publicActionsEnabled ? (
           <div className={styles.detailFooter}>
             <div className={styles.detailActions}>
               <Button
@@ -312,8 +313,8 @@ export function MapDetailDialog({ mapId, onClose }: MapDetailDialogProps) {
                       setReportDescription('');
                     }}
                     onUpdate={(content) => runOnce(`comment-update:${comment.commentId}`, () => commentUpdateMutation.mutateAsync({ commentId: comment.commentId, content }))}
-                    canReport={auth.isMember}
-                    reportDisabledTitle={memberOnlyTitle}
+                    canReport={auth.isMember && publicActionsEnabled}
+                    reportDisabledTitle={publicActionsEnabled ? memberOnlyTitle : '비공개 맵의 댓글은 신고할 수 없습니다.'}
                   />
                 ))
               ) : !commentsQuery.isError ? (
